@@ -1,0 +1,131 @@
+# Module 4 — Lab 2: IAM Policy Misconfiguration Hunting
+
+> **⚠️ PLANNED CONTENT — not yet built or deployed.** Describes the intended lab for
+> review before implementation. Nothing below is live yet.
+
+**Course:** Cloud Pentest — Module 4: IAM Exploitation & Privilege Escalation
+**Target:** SoulSecure Inc. (simulated engagement, continued)
+**Target host:** `https://iam.soulsecure.lab/`
+**Estimated time:** 75–100 minutes
+
+---
+
+## 1. Recap & scenario
+
+Lab 1 gave you summaries — policy *names* and short notes. This lab is about reading
+the actual policy documents behind those names, the way a real IAM audit works. Full
+JSON policies tell you things a one-line summary can't: exactly which actions, which
+resources, and — just as importantly — which permissions somebody granted that they
+almost certainly didn't mean to.
+
+> **Scope reminder:** `iam.soulsecure.lab`, read-only this lab. Don't attempt any
+> policy modification yet (Lab 3).
+
+## 2. Learning objectives
+
+- Fetch and read full IAM policy JSON documents, not just summaries
+- Recognize that an identity can have **more than one** attached policy, and that the
+  boring-looking second one is sometimes the important one
+- Spot dangerous wildcard patterns (`Action: "*"`, `Resource: "*"`) and understand why
+  they're dangerous even on read-only-sounding actions like `iam:GetPolicy`
+- Use an over-broad read permission to map policies you don't hold credentials for
+- Read a role's **trust policy** (`AssumeRolePolicyDocument`) and identify a missing
+  `Condition` as a real, exploitable weakness
+
+## 3. Tasks
+
+### 3.1 — Look again at what Lab 1 told you
+
+Pull `soulsecure-deploy-role`'s summary again if you need to. It has more than one
+attached policy. Did you read the second one closely?
+
+```bash
+curl -sk https://iam.soulsecure.lab/iam/whoami-summary \
+  -H "X-Access-Key-Id: ASIASOULSECUREDEPLOY02" -H "X-Secret-Access-Key: <secret>"
+```
+
+### 3.2 — Fetch the full policy document
+
+```bash
+curl -sk "https://iam.soulsecure.lab/iam/policy?name=<policy-name>" \
+  -H "X-Access-Key-Id: ASIASOULSECUREDEPLOY02" -H "X-Secret-Access-Key: <secret>"
+```
+
+Read what it actually grants. A policy named like a leftover from an old audit is
+worth extra suspicion, not less.
+
+### 3.3 — Use it to read policies you don't hold credentials for
+
+If that second policy's `Action`/`Resource` combination is as broad as it looks, you
+should now be able to read **any** policy document in the account — including ones
+belonging to identities you've never had credentials for. Start with the one that
+sounds like the account's top-level administrative role.
+
+### 3.4 — Confirm what you already suspected
+
+Compare `soulsecure-ci-deploy`'s full policy document against the risk you flagged in
+Lab 1. Does the actual JSON confirm it?
+
+### 3.5 — Harder mode: read a trust policy
+
+Every assumable role has two policies: what it can *do* (the one you've been reading)
+and who's allowed to *become* it (its trust policy —
+`AssumeRolePolicyDocument`). Find a role whose trust policy doesn't restrict who can
+assume it in any meaningful way — no `Condition` block, no specific external
+identifier required, just "anyone in this account." That's a role you'll be coming
+back for.
+
+```bash
+curl -sk "https://iam.soulsecure.lab/iam/trust-policy?role=<role-name>" \
+  -H "X-Access-Key-Id: ASIASOULSECUREDEPLOY02" -H "X-Secret-Access-Key: <secret>"
+```
+
+## 4. Tools you'll want
+
+- `curl` and careful reading — this whole lab is about analysis, not new techniques
+
+## 5. Deliverable: Policy Findings
+
+| Policy/role examined | Statement of concern | Why it's dangerous |
+|---|---|---|
+| | | |
+
+**Flags found:**
+
+- [ ] Flag 1 (found the second attached policy on `soulsecure-deploy-role`): `flag{________________________________}`
+- [ ] Flag 2 (read the top-level admin role's full policy document): `flag{________________________________}`
+- [ ] Flag 3 (confirmed `soulsecure-ci-deploy`'s self-modify risk in the actual JSON): `flag{________________________________}`
+- [ ] Flag 4 (harder mode — found a trust policy with no meaningful restriction): `flag{________________________________}`
+
+## 6. Hints
+
+<details>
+<summary>Hint 1 — the second policy's name</summary>
+
+Look for something that sounds left over from a past project, like an
+account-wide audit tool nobody decommissioned.
+</details>
+
+<details>
+<summary>Hint 2 — the admin role's name</summary>
+
+You've seen references to an "automation" role in Lab 1's PassRole discovery. Try
+that name against `/iam/policy`.
+</details>
+
+<details>
+<summary>Hint 3 — which role has the weak trust policy</summary>
+
+Look for a role name that sounds business-domain-specific (not generic like
+"automation" or "deploy") — something a specific team, not engineering, would own.
+</details>
+
+## 7. Known limitations
+
+Same simplified `iam-sim` service as Lab 1 — see that lab's Known Limitations.
+
+## 8. Next up
+
+Lab 3 (Privilege Escalation via IAM Actions) puts what you found here to work —
+actually exercising the risky permissions you've now confirmed twice over, to reach
+the account's most privileged role.

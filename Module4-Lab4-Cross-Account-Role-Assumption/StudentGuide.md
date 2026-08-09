@@ -1,0 +1,142 @@
+# Module 4 — Lab 4: Cross-Account / Role Assumption Abuse
+
+> **⚠️ PLANNED CONTENT — not yet built or deployed.** Describes the intended lab for
+> review before implementation. Nothing below is live yet.
+
+**Course:** Cloud Pentest — Module 4: IAM Exploitation & Privilege Escalation
+**Target:** SoulSecure Inc. (simulated engagement, continued)
+**Target host:** `https://iam.soulsecure.lab/`
+**Estimated time:** 75–100 minutes
+
+---
+
+## 1. Recap & scenario
+
+Lab 3 escalated privilege by exploiting what an identity was allowed to *do*. This
+lab exploits what a role is willing to *let become it* — a completely different
+mechanism. In Module 2 Lab 2 you learned about a related idea with vhosts (identity
+by what name you present); `sts:AssumeRole` is the IAM version: any identity that
+satisfies a role's trust policy can request temporary credentials **as** that role,
+no password, no separate secret, just meeting whatever condition the trust policy
+requires. When that condition is missing, "whatever condition" is nothing at all.
+
+> **Scope reminder:** `iam.soulsecure.lab`. Active exploitation authorized.
+
+## 2. Learning objectives
+
+- Execute `sts:AssumeRole` against a role whose trust policy has no meaningful
+  restriction
+- Use freshly-assumed temporary credentials against a **different** service
+  (`storage.soulsecure.lab`) than the one that issued them — proving credentials
+  aren't scoped to a single system
+- Understand `ExternalId` as a trust-policy control and why its absence matters
+- Recognize service-account **impersonation** as GCP's equivalent mechanism to AWS
+  role assumption, and that the underlying weakness (over-broad "who can become this
+  identity" grants) is the same idea across clouds
+
+## 3. Tasks
+
+### 3.1 — Assume the role
+
+You confirmed in Lab 2 that `soulsecure-finance-role`'s trust policy has no
+`Condition` block. Assume it:
+
+```bash
+curl -sk -X POST https://iam.soulsecure.lab/sts/assume-role \
+  -H "X-Access-Key-Id: <any-identity-you-hold>" -H "X-Secret-Access-Key: <secret>" \
+  -H 'Content-Type: application/json' \
+  -d '{"role_arn": "arn:aws:iam::445566778899:role/soulsecure-finance-role"}'
+```
+
+### 3.2 — Confirm what you got
+
+```bash
+curl -sk https://iam.soulsecure.lab/iam/whoami-summary \
+  -H "X-Access-Key-Id: <assumed-access-key>" -H "X-Secret-Access-Key: <assumed-secret>"
+```
+
+### 3.3 — Take it somewhere it wasn't issued for
+
+This role's whole purpose is access to the finance object storage bucket you already
+know about from Module 3. `storage.soulsecure.lab` now accepts these same
+credentials directly (not just the presign trick you used back then):
+
+```bash
+curl -sk https://storage.soulsecure.lab/soulsecure-finance-records/ \
+  -H "X-Access-Key-Id: <assumed-access-key>" -H "X-Secret-Access-Key: <assumed-secret>"
+```
+
+You should now be able to **list** the bucket, not just fetch one key you already
+knew — see what else is in there.
+
+### 3.4 — Harder mode: GCP service-account impersonation
+
+Remember the surprising permission the GCP service account had back in Lab 1 —
+`iam.serviceAccounts.getAccessToken`/`actAs`? That's Google's version of "who can
+become this identity," scoped to one specific target account. Use it:
+
+```bash
+curl -sk -X POST https://iam.soulsecure.lab/gcp/impersonate \
+  -H "X-GCP-Client-Email: ci-backup@soulsecure-prod.iam.gserviceaccount.com" \
+  -H 'Content-Type: application/json' \
+  -d '{"target_service_account": "admin@soulsecure-prod.iam.gserviceaccount.com"}'
+```
+
+## 4. Tools you'll want
+
+- `curl` — as with every Module 4 lab, this is entirely API interaction
+
+## 5. Deliverable: Role Assumption / Impersonation Findings
+
+| Cloud | Source identity | Target role/account | Trust weakness | Impact |
+|---|---|---|---|---|
+| AWS | | `soulsecure-finance-role` | | |
+| GCP (harder) | `ci-backup@...` | `admin@...` | | |
+
+**Flags found:**
+
+- [ ] Flag 1 (successful `AssumeRole`): `flag{________________________________}`
+- [ ] Flag 2 (new object found in the finance bucket via real credentials): `flag{________________________________}`
+- [ ] Flag 3 (`whoami-summary` of the assumed role): `flag{________________________________}`
+- [ ] Flag 4 (harder mode — GCP impersonation): `flag{________________________________}`
+
+## 6. Hints
+
+<details>
+<summary>Hint 1 — which credential to assume with</summary>
+
+Any identity you already hold should work — this trust policy has no restriction on
+*who* can attempt it, only that they're a valid principal in the same account.
+</details>
+
+<details>
+<summary>Hint 2 — why the presign trick from Module 3 wasn't the whole picture</summary>
+
+The `/presign` endpoint in Module 3 only ever gave you a link to one specific key you
+already had to guess. Real credentials with `s3:ListBucket` show you everything in
+one shot — that's the practical difference between "found one file" and "compromised
+the bucket."
+</details>
+
+<details>
+<summary>Hint 3 — the impersonation request shape</summary>
+
+`POST /gcp/impersonate`, header identifies who's asking, body names who they want to
+become. If the requester's role grants `actAs`/`getAccessToken` on that exact target,
+it succeeds.
+</details>
+
+## 7. Known limitations
+
+`sts:AssumeRole` in this mock evaluates **only the target role's trust policy** — it
+doesn't additionally require the caller's own policy to explicitly allow
+`sts:AssumeRole` on that resource, which real AWS does. Documented simplification;
+don't take this as a reference for real AWS's dual-sided assume-role permission
+model.
+
+## 8. Next up
+
+Lab 5 (Secrets Manager / Parameter Store Exploitation) closes out Module 4 by
+following one more over-broad permission — this time straight to plaintext secrets,
+including one you've technically already seen once before, in a different lab
+entirely.

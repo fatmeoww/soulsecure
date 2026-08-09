@@ -1,0 +1,14 @@
+# Local Claude Code / assistant tooling config -- not project content
+.claude/
+
+# VM appliance exports -- ~4.5GB each, far over GitHub's 100MB file limit.
+# Keep OVA-Exports/README.md (import instructions) but never the .ova files themselves.
+OVA-Exports/*.ova
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp

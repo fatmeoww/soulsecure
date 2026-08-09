@@ -1,0 +1,171 @@
+# Module 4 — Lab 1: Credential Enumeration & Validation — Instructor Key
+
+> **⚠️ PLANNED CONTENT — not yet built.** Build spec, implementation-ready. This file
+> also defines the **canonical identity/policy registry for all of Module 4** —
+> Labs 2–5's InstructorKeys reference back to this table rather than redefining it.
+> Flag values below are placeholders generated at planning time.
+
+**New container:** `iam-sim` — a Flask app implementing a simplified but genuinely
+**enforced** AWS STS/IAM-shaped API plus one GCP-flavored endpoint. New vhost
+`iam.soulsecure.lab` via the `www` gateway (add to TLS SAN list, same pattern as
+every other vhost). Auth via the same `X-Access-Key-Id`/`X-Secret-Access-Key` header
+convention established in Module 3 Lab 1's storage auth.
+
+## Identity registry (canonical ground truth for all Module 4 labs)
+
+| Principal | ARN | Source (Module 3) | Access Key ID | Attached policy |
+|---|---|---|---|---|
+| `soulsecure-app-role` | `arn:aws:iam::445566778899:role/soulsecure-app-role` | Lab 2 core (IMDS) | `ASIASOULSECUREAPP01` | `AppRoleReadOnly` |
+| `soulsecure-deploy-role` | `arn:aws:iam::445566778899:role/soulsecure-deploy-role` | Lab 2 harder (IMDS, IMDSv2) | `ASIASOULSECUREDEPLOY02` | `DeployRolePolicy` |
+| `soulsecure-ci-deploy` | `arn:aws:iam::445566778899:user/soulsecure-ci-deploy` | Lab 3 (Jenkins credentials store) | `ASIASOULSECURECIDEPLOY03` | `CIDeployPolicy` |
+| `storage-readonly` | `arn:aws:iam::445566778899:user/storage-readonly` | Lab 1 (`soulsecure-secrets-eu`) | `SVCKEY-STORAGE-RO-8841` | `StorageReadOnlyPolicy` |
+| `ci-backup@soulsecure-prod.iam.gserviceaccount.com` | (GCP resource name) | Lab 4 (backup archive) | n/a (GCP) | GCP role `roles/soulsecureCIBackup` (custom) |
+| `soulsecure-automation-admin` | `arn:aws:iam::445566778899:role/automation-admin-role` | **not directly obtainable** — reachable only via PassRole abuse (Lab 3) or AssumeRole (Lab 4) | n/a — no standing credential exists for this role | `AdministratorAccess`-equivalent (`"Action":"*","Resource":"*"`) |
+
+`soulsecure-automation-admin` is the module's single "crown jewel" target — every
+privesc path in Labs 3–4 should be able to reach it, by design (see
+[Module4-Overview.md](../Module4-Overview.md)'s resolved design question).
+
+## Policy documents (ground truth, real AWS-style JSON)
+
+**`AppRoleReadOnly`** (attached to `soulsecure-app-role`):
+```json
+{"Version": "2012-10-17", "Statement": [
+  {"Effect": "Allow", "Action": ["sts:GetCallerIdentity"], "Resource": "*"},
+  {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "arn:aws:s3:::soulsecure-*/*"}
+]}
+```
+Genuinely boring — no path forward from this identity alone. Intentional negative
+control (mirrors M2 Lab 4's `AccessDenied`-vs-`NoSuchBucket` matched-pair pattern).
+
+**`DeployRolePolicy`** (attached to `soulsecure-deploy-role`):
+```json
+{"Version": "2012-10-17", "Statement": [
+  {"Effect": "Allow", "Action": ["sts:GetCallerIdentity"], "Resource": "*"},
+  {"Effect": "Allow", "Action": ["s3:*"], "Resource": "arn:aws:s3:::soulsecure-*"},
+  {"Effect": "Allow", "Action": ["iam:PassRole"], "Resource": "arn:aws:iam::445566778899:role/automation-*"},
+  {"Effect": "Allow", "Action": ["automation:CreateTask", "automation:GetTaskResult"], "Resource": "*"}
+]}
+```
+**PassRole + a service that consumes it (`automation:CreateTask`)** — the module's
+primary, most realistic privesc primitive. Exploited in Lab 3.
+
+**`CIDeployPolicy`** (attached to `soulsecure-ci-deploy`):
+```json
+{"Version": "2012-10-17", "Statement": [
+  {"Effect": "Allow", "Action": ["sts:GetCallerIdentity"], "Resource": "*"},
+  {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject"], "Resource": "arn:aws:s3:::soulsecure-*-assets/*"},
+  {"Effect": "Allow", "Action": ["iam:CreatePolicyVersion", "iam:SetDefaultPolicyVersion", "iam:GetPolicy", "iam:ListPolicyVersions"], "Resource": "arn:aws:iam::445566778899:policy/CIDeployPolicy"}
+]}
+```
+**Self-managed policy** — this identity can rewrite its own policy's default version,
+a second, distinct, classic real-world privesc primitive. Also exploited in Lab 3.
+
+**`StorageReadOnlyPolicy`** (attached to `storage-readonly`):
+```json
+{"Version": "2012-10-17", "Statement": [
+  {"Effect": "Allow", "Action": ["sts:GetCallerIdentity"], "Resource": "*"},
+  {"Effect": "Allow", "Action": ["s3:GetObject", "s3:ListBucket"], "Resource": ["arn:aws:s3:::soulsecure-dev-assets", "arn:aws:s3:::soulsecure-dev-assets/*"]}
+]}
+```
+Also a genuine dead end within `iam-sim` — this credential's actual value was already
+spent in Module 3 Lab 1 (unlocking `soulsecure-dev-assets` directly against the
+`storage` app). Its `iam-sim` summary should make clear it has nothing further to
+offer here, without feeling like a wasted table row (the "why doesn't every
+credential need to lead somewhere new" lesson).
+
+**GCP custom role `roles/soulsecureCIBackup`** (bound to
+`ci-backup@soulsecure-prod.iam.gserviceaccount.com`):
+```json
+{"permissions": ["storage.objects.get", "storage.objects.list",
+  "iam.serviceAccounts.getAccessToken", "iam.serviceAccounts.actAs"],
+ "note": "getAccessToken/actAs scoped only to admin@soulsecure-prod.iam.gserviceaccount.com -- should never have been granted to a backup-only service account"}
+```
+`iam.serviceAccounts.getAccessToken`/`actAs` on the `admin@...` service account is
+this identity's privesc primitive — exploited as Lab 4's harder mode.
+
+**Target role `automation-admin-role` / GCP `admin@soulsecure-prod.iam.gserviceaccount.com`:**
+Both effectively `"Action":"*","Resource":"*"` equivalents — the shared "crown jewel"
+reached via either the AWS PassRole/self-policy paths (Lab 3) or the GCP
+impersonation path (Lab 4 harder mode) or AWS cross-account AssumeRole (Lab 4 core).
+
+## New `iam-sim` routes for this lab
+
+| Method | Path | Auth | Behavior |
+|---|---|---|---|
+| POST | `/sts/get-caller-identity` | AWS header pair | Always succeeds for any of the 4 registered AWS-style credentials (real AWS behavior: this call requires no permissions); `403` for unrecognized keys. Returns `{"Arn":..., "UserId":..., "Account": "445566778899"}` |
+| GET | `/iam/whoami-summary` | AWS header pair | Returns `{"principal":..., "attached_policies": [...], "note": "...", "flag": "flag{...}"}` for `soulsecure-app-role`, `soulsecure-ci-deploy`, `soulsecure-deploy-role` (flags below); for `storage-readonly` returns the same shape **without** a `flag` field (deliberately — see grading note) |
+| POST | `/gcp/testIamPermissions` | header `X-GCP-Client-Email` | Body `{"permissions": [...]}` → returns `{"grantedPermissions": [subset actually granted], "flag": "flag{...}"}` — flag only included in the response the first time `iam.serviceAccounts.getAccessToken` appears in the requested list **and** is granted |
+
+## Flags (ground truth — placeholder values, see banner)
+
+| Flag | Location | Value |
+|---|---|---|
+| Flag 1 | `whoami-summary` for `soulsecure-app-role` | `flag{b69b7f4f374540b29ae43404a9fcc89d}` |
+| Flag 2 | `whoami-summary` for `soulsecure-ci-deploy` | `flag{d02044d2a25acc0fd3703bed5c907cf8}` |
+| Flag 3 | `whoami-summary` for `soulsecure-deploy-role` | `flag{52ad361a3ff8ffbfb019464ec97f54a8}` |
+| Flag 4 (harder mode) | `/gcp/testIamPermissions` including `iam.serviceAccounts.getAccessToken` | `flag{d54dd5f6a25d0552109c0a67c86d8664}` |
+
+## Verification commands (once built)
+
+```bash
+curl -sk https://iam.soulsecure.lab/sts/get-caller-identity \
+  -H "X-Access-Key-Id: ASIASOULSECUREAPP01" -H "X-Secret-Access-Key: <secret>"
+
+curl -sk https://iam.soulsecure.lab/iam/whoami-summary \
+  -H "X-Access-Key-Id: ASIASOULSECUREAPP01" -H "X-Secret-Access-Key: <secret>"          # Flag 1
+curl -sk https://iam.soulsecure.lab/iam/whoami-summary \
+  -H "X-Access-Key-Id: ASIASOULSECURECIDEPLOY03" -H "X-Secret-Access-Key: <secret>"     # Flag 2
+curl -sk https://iam.soulsecure.lab/iam/whoami-summary \
+  -H "X-Access-Key-Id: ASIASOULSECUREDEPLOY02" -H "X-Secret-Access-Key: <secret>"       # Flag 3
+
+curl -sk -X POST https://iam.soulsecure.lab/gcp/testIamPermissions \
+  -H "X-GCP-Client-Email: ci-backup@soulsecure-prod.iam.gserviceaccount.com" \
+  -H 'Content-Type: application/json' \
+  -d '{"permissions":["storage.objects.get","iam.serviceAccounts.getAccessToken","iam.serviceAccounts.actAs"]}'  # Flag 4
+```
+
+## Grading rubric (out of 100, proposed)
+
+| Criterion | Points |
+|---|---|
+| Validated all 5 Module 3 credentials against `get-caller-identity`/GCP equivalent | 15 |
+| Retrieved `whoami-summary` for all AWS-style identities, including `storage-readonly` | 15 |
+| Correctly documented `soulsecure-app-role` as a dead end (not a manufactured finding) | 10 |
+| Correctly identified the `soulsecure-ci-deploy` self-managed-policy risk as structurally dangerous | 20 |
+| Correctly identified `soulsecure-deploy-role`'s `PassRole`+`automation:CreateTask` combination as a risk, without yet needing to exploit it | 20 |
+| Found the GCP impersonation permission via `testIamPermissions` | 15 |
+| Complete, clean permission map deliverable | 5 |
+
+## Design notes / narrative threads
+
+- All four AWS-style identities' policies are written in **real AWS policy JSON
+  syntax** on purpose (per the resolved Module 4 Overview design question) — directly
+  reusable in Module 6's IaC-review lab without rewriting.
+- `storage-readonly` getting a summary **without** a flag field is deliberate: not
+  every credential a student worked hard to obtain in Module 3 needs to "pay off"
+  again in Module 4. Grade the correct conclusion ("this one's done, nothing left
+  here"), not the presence of a flag.
+- `soulsecure-automation-admin` having **no standing credential at all** (unlike every
+  other identity in this registry) is intentional — it can only ever be *reached*,
+  never found lying around, which is exactly what should be true of a real
+  admin-tier role in a well-run (if imperfect) environment.
+
+## File locations (proposed)
+
+- `/opt/soulsecure-labs/apps/iam_sim.py` (new) — `IDENTITIES`, `POLICIES` dicts as
+  the single source of truth; a small policy-evaluation function (`is_allowed(principal,
+  action, resource)`) that every other Module 4 lab's routes call before performing
+  any state change. Write this evaluation function once, carefully — Labs 2–5 all
+  depend on it being correct.
+- `docker-compose.yml` — add `iam-sim` service; `nginx/` — add `iam.soulsecure.lab`
+  vhost + TLS SAN entry.
+
+## Known limitations
+
+- Real AWS IAM policy evaluation includes explicit `Deny` precedence, resource-level
+  wildcarding nuances, and condition keys well beyond what this mock needs — keep the
+  evaluator only as sophisticated as Labs 1–5 actually require (documented per-lab),
+  don't over-build a general-purpose policy engine.
+- GCP permission model here is simplified to a single custom-role permission list per
+  service account, not full GCP IAM (no resource hierarchy / organization policies).

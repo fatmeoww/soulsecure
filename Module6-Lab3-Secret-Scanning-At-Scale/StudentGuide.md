@@ -1,0 +1,130 @@
+# Module 6 — Lab 3: Secret-Scanning & Credential Hunting at Scale
+
+> **⚠️ PLANNED CONTENT — not yet built or deployed.** Describes the intended lab for
+> review before implementation. Nothing below is live yet.
+
+**Course:** Cloud Pentest — Module 6: Cloud Pentesting Tools & Hands-on Labs
+**Target:** Files from Module 3 Lab 4, plus a new archive for this lab
+**Estimated time:** 60–90 minutes
+
+---
+
+## 1. Recap & scenario
+
+Back in Module 3 Lab 4, you found a secret that had been "removed" from a git repo's
+current files but was still recoverable from commit history — by hand, with `git log
+-p`. That works fine on one small repo. It does not scale to a real assessment
+covering dozens of repositories and years of history. This lab is about the tooling
+that does.
+
+> **Scope reminder:** the provided archives only.
+
+## 2. Learning objectives
+
+- Run a real secret-scanning tool (trufflehog or gitleaks) against a git repository
+  and confirm it automatically finds what you found by hand in Module 3
+- Recognize that automated tools catch categories of secrets manual review
+  routinely misses (encoded/obfuscated values, secrets in binary content)
+- Correctly triage a well-known false positive instead of reporting it as a real
+  finding
+- Run a scan across a larger combined volume of material and produce a
+  prioritized, de-duplicated report
+
+## 3. Tasks
+
+### 3.1 — Confirm the known finding, automatically
+
+```bash
+trufflehog git file://./site-src-backup --only-verified=false
+```
+
+Confirm it surfaces the same Stripe key you found manually in Module 3 Lab 4 —
+without you needing to know which commit to look at.
+
+### 3.2 — Scan a larger source dump
+
+Your instructor will provide `soulsecure-webapp-dump.tar.gz`, a fuller source tree.
+Extract and scan it:
+
+```bash
+gitleaks detect --source ./soulsecure-webapp-dump --no-git -v
+```
+
+One of the findings won't be plaintext — it'll be encoded. Decode it once you find
+it.
+
+### 3.3 — Triage what you found
+
+The scan will likely flag something that *looks* like an AWS access key but is
+actually a well-known publicly-documented example value, not a real secret. Find it,
+confirm it against AWS's own public documentation pattern, and correctly exclude it
+from your findings — while making sure you don't also throw out something genuinely
+sensitive sitting right next to it.
+
+### 3.4 — Harder mode: scan everything at once
+
+Combine every archive you've collected across Module 3 (backup portal downloads,
+this lab's dump) into one directory tree and run a full scan across all of it,
+including deep git history. Look for anything that didn't surface in your earlier,
+narrower scans.
+
+## 4. Tools you'll want
+
+- `trufflehog` and/or `gitleaks` (either, or both for comparison)
+- The archives from Module 3 Lab 4, plus this lab's new dump
+
+## 5. Deliverable: Secret-Scanning Report
+
+| Secret found | Tool/detector | Location | Verified real or false positive? |
+|---|---|---|---|
+| | | | |
+
+**Flags found:**
+
+- [ ] Flag 1 (automated confirmation of the M3 Lab 4 Stripe key): `flag{________________________________}`
+- [ ] Flag 2 (new base64-encoded secret in the webapp dump): `flag{________________________________}`
+- [ ] Flag 3 (correctly triaged the AWS example key vs. the real secret beside it): `flag{________________________________}`
+- [ ] Flag 4 (harder mode — full combined deep scan finds one more buried secret): `flag{________________________________}`
+
+## 6. Hints
+
+<details>
+<summary>Hint 1 — trufflehog's git mode</summary>
+
+`trufflehog git file://<path>` scans full history by default — that's what makes it
+find the Stripe key without you pointing it at a specific commit.
+</details>
+
+<details>
+<summary>Hint 2 — decoding the base64 finding</summary>
+
+`echo '<value>' | base64 -d` — the decoded content is your flag.
+</details>
+
+<details>
+<summary>Hint 3 — the well-known example key</summary>
+
+AWS's own documentation uses one specific placeholder access key ID in virtually
+every code sample. If what you're looking at matches that exact, famous string, it's
+not a real credential — but check what's on the line right next to it before you
+move on.
+</details>
+
+<details>
+<summary>Hint 4 — where the buried secret is</summary>
+
+Not everything worth finding is in a text file — try a scan mode/flag that also
+inspects binary or non-standard file content, not just source files.
+</details>
+
+## 7. Known limitations
+
+Real tool output varies slightly by version — exact finding counts/format may differ
+from what a specific InstructorKey walkthrough shows; the specific secrets this lab
+seeds are what matters, not an exact match to any one tool's UI.
+
+## 8. Next up
+
+Lab 4 (Infrastructure-as-Code Security Review) shifts from scanning what's already
+deployed to scanning the *definitions* that would have deployed it in the first
+place — catching these exact classes of misconfiguration before they ever go live.

@@ -1,0 +1,173 @@
+# Module 4 — Lab 1: Credential Enumeration & Validation
+
+> **⚠️ PLANNED CONTENT — not yet built or deployed.** Describes the intended lab for
+> review before implementation. Nothing below is live yet.
+
+**Course:** Cloud Pentest — Module 4: IAM Exploitation & Privilege Escalation
+**Target:** SoulSecure Inc. (simulated engagement, continued from Module 3)
+**Target host:** `https://iam.soulsecure.lab/` (new this module — a lightweight
+AWS STS/IAM-shaped control plane, plus one GCP-flavored endpoint)
+**Estimated time:** 75–100 minutes
+
+---
+
+## 1. Recap & scenario
+
+Module 3 ended with you holding a pile of credentials of completely unknown value:
+access-key pairs from a storage bucket, two different IMDS-sourced role credentials,
+a CI/CD system's stored key, and a GCP service-account file. None of that matters
+until you know what each one can actually *do*.
+
+This lab is the first task on every real engagement once you're holding stolen
+credentials: don't guess, don't assume, systematically find out what each identity is
+authorized for — before you touch anything with it.
+
+> **Scope reminder:** `iam.soulsecure.lab` and whatever identities you validate
+> against it. This lab is enumeration only — don't attempt to change any policy yet
+> (that's Lab 3).
+
+## 2. Learning objectives
+
+- Validate a set of credentials against an identity service and read what it tells
+  you about who you are
+- Understand that `sts:GetCallerIdentity`-equivalent calls require no permissions in
+  a real cloud environment — always your safe first move
+- Enumerate a principal's own attached permissions the same way real IAM allows
+  self-inspection by default
+- Recognize which findings are boring dead ends and document them as such — a "this
+  identity can't do anything interesting" conclusion is a real, valid deliverable
+- Recognize risk patterns (self-managed policies, `iam:PassRole`) *before* knowing how
+  to exploit them — spotting the shape of a problem is a separate skill from
+  exploiting it
+
+## 3. Tasks
+
+### 3.1 — Bring your Module 3 haul
+
+Gather every credential you collected across Module 3's five labs. You should have
+at minimum: a storage-scoped key, two IMDS-derived AWS-style role credentials, one
+CI/CD-sourced AWS-style key, and one GCP service-account JSON file.
+
+### 3.2 — Validate each one
+
+For every AWS-style credential pair, confirm identity:
+
+```bash
+curl -sk https://iam.soulsecure.lab/sts/get-caller-identity \
+  -H "X-Access-Key-Id: <access-key>" -H "X-Secret-Access-Key: <secret-key>"
+```
+
+This call should succeed for every credential you have, even ones that turn out to be
+completely useless for anything else — that's realistic and expected.
+
+### 3.3 — Pull each identity's self-summary
+
+```bash
+curl -sk https://iam.soulsecure.lab/iam/whoami-summary \
+  -H "X-Access-Key-Id: <access-key>" -H "X-Secret-Access-Key: <secret-key>"
+```
+
+Do this for **every** identity, including the ones you suspect are boring. Read the
+`attached_policies` and any `note` field carefully — you're looking for anything that
+looks like it grants the identity power over *itself* or over *other* identities'
+permissions, not just over application data.
+
+### 3.4 — Build your permission map
+
+For each identity, record what you learned: what it can touch, and anything that
+looks structurally risky (even if you don't yet know how to abuse it).
+
+### 3.5 — Harder mode: the GCP identity
+
+The GCP service account uses a different call shape entirely — Google's IAM model
+doesn't have "attached policies" in quite the same sense at the principal level for
+this kind of check; instead there's a permissions-testing call:
+
+```bash
+curl -sk -X POST https://iam.soulsecure.lab/gcp/testIamPermissions \
+  -H "X-GCP-Client-Email: ci-backup@soulsecure-prod.iam.gserviceaccount.com" \
+  -H 'Content-Type: application/json' \
+  -d '{"permissions": ["storage.objects.get", "storage.objects.list", "iam.serviceAccounts.getAccessToken", "iam.serviceAccounts.actAs"]}'
+```
+
+Test a broader set of permission strings than the obvious storage ones — one of the
+ones you might not think to check comes back granted, and it's a significant finding.
+
+## 4. Tools you'll want
+
+- `curl` — every call in this lab is plain JSON over HTTPS
+- Keep your Module 3 credential list handy in a text file — you'll be reusing all of
+  it repeatedly across this entire module
+
+## 5. Deliverable: Permission Map
+
+| Identity | Credential source (Module 3 lab) | `whoami`/identity confirmed? | Attached policies / notable permissions | Risk flag (if any) |
+|---|---|---|---|---|
+| `soulsecure-app-role` | Lab 2 (core) | | | |
+| `soulsecure-deploy-role` | Lab 2 (harder) | | | |
+| `soulsecure-ci-deploy` | Lab 3 | | | |
+| storage read-only key | Lab 1 | | | |
+| GCP service account | Lab 4 | | | |
+
+**Flags found:**
+
+- [ ] Flag 1 (`soulsecure-app-role` summary): `flag{________________________________}`
+- [ ] Flag 2 (`soulsecure-ci-deploy` summary — self-policy risk): `flag{________________________________}`
+- [ ] Flag 3 (`soulsecure-deploy-role` summary — PassRole risk): `flag{________________________________}`
+- [ ] Flag 4 (harder mode — GCP impersonation permission): `flag{________________________________}`
+
+## 6. Hints
+
+<details>
+<summary>Hint 1 — the auth header format</summary>
+
+Same `X-Access-Key-Id` / `X-Secret-Access-Key` header pair you used in Module 3 Lab 1
+against `storage.soulsecure.lab`. This service uses the identical convention.
+</details>
+
+<details>
+<summary>Hint 2 — don't skip the "boring" identity</summary>
+
+`soulsecure-app-role`'s summary genuinely doesn't hide anything exciting — that's the
+point of including it. A clean "nothing here" conclusion, correctly documented, is
+worth full credit. Don't manufacture a finding that isn't there.
+</details>
+
+<details>
+<summary>Hint 3 — what "self-managed policy" means as a risk</summary>
+
+If an identity's own summary shows it has permission to modify the very policy that's
+attached to itself, that's a structural problem regardless of whether you've figured
+out the exact exploitation mechanics yet (you will, in Lab 3).
+</details>
+
+<details>
+<summary>Hint 4 — `iam:PassRole` on its own isn't the whole story</summary>
+
+`PassRole` alone doesn't do anything dangerous by itself — it only matters combined
+with something that lets you *use* a passed role (a compute/automation service that
+executes with the role you hand it). Note it as a finding here; you'll chain it in
+Lab 3.
+</details>
+
+<details>
+<summary>Hint 5 — the GCP permission list</summary>
+
+Try `iam.serviceAccounts.getAccessToken` and `iam.serviceAccounts.actAs` specifically
+— these are the real Google Cloud permissions that enable service-account
+impersonation.
+</details>
+
+## 7. Known limitations
+
+`iam.soulsecure.lab` is a hand-built, simplified stand-in for AWS STS/IAM plus one
+GCP-style endpoint — not the real `aws`/`gcloud` CLIs. The permission model is real
+in spirit (policies are genuinely evaluated server-side, not just decorative) but the
+request/response shapes are simplified for `curl`-based interaction.
+
+## 8. Next up
+
+Lab 2 (IAM Policy Misconfiguration Hunting) goes deeper into the *actual policy
+documents* behind what you found here — reading full JSON policies instead of just
+summaries, and learning to spot the specific wording patterns (wildcards, missing
+conditions) that turn a permission into a vulnerability.

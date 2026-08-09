@@ -1,0 +1,179 @@
+# Module 3 — Lab 2: SSRF → Cloud Instance Metadata Service (IMDS)
+
+> **⚠️ PLANNED CONTENT — not yet built or deployed.** Describes the intended lab for
+> review before implementation. Nothing below is live yet.
+
+**Course:** Cloud Pentest — Module 3: Initial Access & Storage Exploitation
+**Target:** SoulSecure Inc. (simulated engagement, continued)
+**Target host:** `https://api.soulsecure.lab/` (same host as Module 2 Lab 3)
+**Estimated time:** 75–100 minutes
+
+---
+
+## 1. Recap & scenario
+
+Module 2 Lab 3 left you with a full map of `api.soulsecure.lab`'s endpoints,
+including the `/api/v2/status` changelog you brute-forced your way into. Go back and
+read that changelog again — SoulSecure shipped something new since your last visit.
+
+This lab is about one of the most consequential bug classes in cloud environments:
+Server-Side Request Forgery. When an application feature makes an HTTP request on
+your behalf to a URL *you* control, and that server happens to be running on cloud
+compute, you can often make it request something it was never meant to expose —
+including the cloud provider's **instance metadata service**, which hands out live,
+usable credentials to anything that asks from the right IP.
+
+> **Scope reminder:** `api.soulsecure.lab` and whatever it leads you to internally.
+> Active exploitation is authorized this module — this lab specifically is about
+> proving impact via a real credential extraction, not just triggering an error.
+
+## 2. Learning objectives
+
+- Identify a feature that performs a server-side HTTP fetch and recognize it as an
+  SSRF candidate before you've even tried to abuse it
+- Use SSRF to reach a purely internal service that has no public DNS name or route
+- Understand *why* `169.254.169.254` specifically matters in a cloud environment, and
+  what an attacker gets by reaching it
+- Retrieve and use IAM-role-shaped temporary credentials obtained via IMDS
+- Understand IMDSv2 (session-token-gated metadata) as a real mitigation, and what
+  kind of SSRF primitive is required to defeat it
+
+## 3. Tasks
+
+### 3.1 — Find the new feature
+
+Re-check `/api/v2/status` — something in the changelog text points at a new,
+still-in-beta integrations feature. Confirm it exists and see what it expects:
+
+```bash
+curl -sk https://api.soulsecure.lab/api/v2/status
+```
+
+### 3.2 — Confirm it's a real SSRF primitive
+
+The feature fetches a URL you give it and returns information about the response.
+Prove it makes a genuine server-side request (not just validating the URL string) by
+pointing it at something you control or a well-known external site, and compare the
+response to what you'd expect.
+
+### 3.3 — Pivot to an internal-only service
+
+The request happens from inside SoulSecure's network, not from your attack box. That
+means it can reach things your `nmap` never will. Try common internal service-naming
+patterns — Docker/Kubernetes environments very often expose internal services by
+their container/service name on standard ports (`8500` is a common one for internal
+config/service-discovery tools).
+
+```bash
+curl -sk -X POST https://api.soulsecure.lab/api/v2/integrations/fetch-preview \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"http://config-service:8500/"}'
+```
+
+### 3.4 — Reach the cloud metadata service
+
+`169.254.169.254` is a special, non-routable address reserved for exactly one thing
+in most public clouds: the instance metadata service (IMDS). Every VM can reach it;
+nothing outside the VM can. If your SSRF primitive runs *on* the VM, so can you.
+
+```bash
+curl -sk -X POST https://api.soulsecure.lab/api/v2/integrations/fetch-preview \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"http://169.254.169.254/latest/meta-data/"}'
+```
+
+Walk the metadata tree. Two paths matter most:
+
+- `/latest/user-data` — often contains the bootstrap/cloud-init script that
+  provisioned the instance. Real-world bootstrap scripts routinely have secrets
+  hardcoded in them. Read whatever comes back carefully — there's more than one
+  useful thing in it.
+- `/latest/meta-data/iam/security-credentials/` — lists the name of the IAM role
+  attached to this instance. Request that name as a sub-path and you get the actual
+  temporary access key/secret/session token currently valid for that role.
+
+### 3.5 — Harder mode: IMDSv2 blocks the easy path
+
+Somewhere in what you found in 3.4, there's a reference to a *second*, presumably
+more privileged role that the app is being migrated to. Try requesting its
+credentials the same way you got the first role's — it won't work. This metadata
+service enforces **IMDSv2**: before you can `GET` metadata, you first have to `PUT`
+`/latest/api/token` (with a required TTL header) to get a session token, then include
+that token on every subsequent request as `X-aws-ec2-metadata-token`.
+
+The problem: your SSRF primitive from 3.1–3.4 only does `GET` requests with no custom
+headers. You need a *different* capability. Check whether there's a second,
+less-obvious integration endpoint meant for more advanced use (signature testing on
+outgoing webhooks needs to control method and headers, after all) — the first
+endpoint's own error responses are worth reading closely.
+
+## 4. Tools you'll want
+
+- `curl` for both talking to `api.soulsecure.lab` and constructing your JSON request
+  bodies
+- Nothing else exotic — this lab is entirely about recognizing what's reachable, not
+  about specialized tooling
+
+## 5. Deliverable: SSRF Impact Summary
+
+| Target reached via SSRF | Method used | What it exposed | Severity/impact |
+|---|---|---|---|
+| | | | |
+
+**Flags found:**
+
+- [ ] Flag 1 (internal config service, non-IMDS pivot): `flag{________________________________}`
+- [ ] Flag 2 (IMDS `/latest/user-data` leak): `flag{________________________________}`
+- [ ] Flag 3 (IMDS role credentials, first role): `flag{________________________________}`
+- [ ] Flag 4 (harder mode — IMDSv2 bypass, second role): `flag{________________________________}`
+
+## 6. Hints
+
+<details>
+<summary>Hint 1 — where the feature is documented</summary>
+
+`/api/v2/status`'s changelog text mentions something like "integrations webhook
+preview (beta)" and a path. That path is `/api/v2/integrations/fetch-preview`,
+`POST`, JSON body `{"url": "..."}`.
+</details>
+
+<details>
+<summary>Hint 2 — internal service name</summary>
+
+Try `http://config-service:8500/` through the SSRF endpoint. This hostname resolves
+inside SoulSecure's internal network only — your attack box will never resolve it
+directly, which is exactly the point of the exercise.
+</details>
+
+<details>
+<summary>Hint 3 — reading the user-data script</summary>
+
+There are two separate things worth noticing in the bootstrap script: a hardcoded
+secret (that's your flag), and a `TODO`-style comment about an in-progress migration
+to a differently-named IAM role. Don't stop reading at the first interesting line.
+</details>
+
+<details>
+<summary>Hint 4 — the harder-mode endpoint</summary>
+
+Try feeding a URL that IMDS itself would reject to `fetch-preview` and read the error
+message carefully — it references a second endpoint by name. That second endpoint
+accepts `method` and `headers` fields in its JSON body in addition to `url`, which is
+exactly what a `PUT /latest/api/token` request followed by an
+`X-aws-ec2-metadata-token`-bearing `GET` requires.
+</details>
+
+## 7. Known limitations
+
+The mock IMDS is simplified relative to real AWS: real IMDSv2, once enabled, gates
+*every* metadata path (including role listing), not just credential retrieval. Here,
+only the second, higher-privilege role's credentials are token-gated — a deliberate
+simplification so the lab has a clean "core vs. harder-mode" split rather than an
+all-or-nothing wall. Don't take this lab's exact gating behavior as a literal
+reference for real-world IMDSv2 configuration.
+
+## 8. Next up
+
+Lab 3 (Exposed CI/CD Server Exploitation) moves to `jenkins-old` — a completely
+different initial-access path (weak authentication into an old build server) that,
+by the end, hands you a third and very differently-flavored set of credentials.

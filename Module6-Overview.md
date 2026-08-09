@@ -1,0 +1,88 @@
+# Module 6: Cloud Pentesting Tools & Hands-on Labs — Overview
+
+> **Status: PLANNED — design doc only, but Labs 1–5 now have full StudentGuide +
+> InstructorKey drafts** (see [Module6-Build-Spec.md](Module6-Build-Spec.md) for the
+> consolidated index). Capstone module — depends on Modules 3–5 shipping first
+> (Lab 5 replays the whole chain). Mirrors [Module2-Overview.md](Module2-Overview.md);
+> update in place as labs get built on the VM.
+
+**Course:** Cloud Pentest
+**Fictional target:** SoulSecure Inc. (same tenant, full lifecycle: recon through
+persistence)
+**Architecture (resolved during drafting):** turned out to need **three different
+infrastructure patterns**, not one uniform approach — see
+[Module6-Build-Spec.md](Module6-Build-Spec.md)'s architecture summary. Labs 1–2 use a
+**new, parallel LocalStack environment** (Modules 3–5's hand-rolled mocks are
+explicitly not real-AWS-API-compatible, documented in their own Known Limitations —
+genuine tools like Prowler/Pacu need the real API shape). Labs 3–4 are pure static
+files (git repo / Terraform source), no live service at all. Lab 5 reuses the
+existing Module 3–5 stack, freshly reset.
+
+## Why this module exists (continuity from Modules 2–5)
+
+Every prior module deliberately had students do things **by hand** first, so they'd
+understand the underlying primitive before automating it. Module 6 is where that
+manual understanding gets converted into tool fluency — and where the whole
+engagement gets assembled into one deliverable a client would actually receive.
+
+| Manual skill from earlier modules | Automated in Module 6 |
+|---|---|
+| Recon by hand (Module 2) | Lab 1 — posture-assessment tooling (ScoutSuite/Prowler-style) |
+| IAM enumeration by hand (Module 4 Lab 1) | Lab 2 — exploitation-framework-driven recon→escalate chaining |
+| Manually spotting hardcoded secrets in bucket/backup/Jenkins dumps (Module 3) | Lab 3 — automated secret-scanning at scale |
+| Misconfigurations discovered live (Modules 3–5, throughout) | Lab 4 — same classes of misconfig, found "shifted left" in IaC source before deployment |
+| The full attack chain, module by module | Lab 5 — capstone: same chain, one sitting, one report |
+
+**Module-level goal:** a professional-quality pentest report covering the full
+engagement (Modules 3–5 worth of findings), written the way this course's labs have
+been building toward the entire time — not a new skill, a synthesis.
+
+## Planned 5 labs
+
+| # | Lab | Focus | Notes |
+|---|---|---|---|
+| 1 | Automated Cloud Security Posture Assessment | Real Prowler/ScoutSuite against a new LocalStack environment seeded with resources mirroring the course's misconfiguration story; triaging signal from noise | See [Module6-Lab1-Posture-Assessment](Module6-Lab1-Posture-Assessment/StudentGuide.md) (drafted) |
+| 2 | Cloud Exploitation Framework Practice | Real Pacu against the same LocalStack environment — `iam__enum_permissions` and `iam__privesc_scan` (detect + exploit) against a deliberately narrow, single-technique-vulnerable identity | See [Module6-Lab2-Pacu-Exploitation-Framework](Module6-Lab2-Pacu-Exploitation-Framework/StudentGuide.md) (drafted) |
+| 3 | Secret-Scanning & Credential Hunting at Scale | Real trufflehog/gitleaks against Module 3 Lab 4's git repo (unmodified) plus a new file dump with an encoded secret and a real-vs-well-known-false-positive triage pair | See [Module6-Lab3-Secret-Scanning-At-Scale](Module6-Lab3-Secret-Scanning-At-Scale/StudentGuide.md) (drafted) |
+| 4 | Infrastructure-as-Code (IaC) Security Review | Real checkov/tfsec against a new Terraform source tree mirroring the engagement's live findings, plus one new network-exposure finding and a remediate-and-rescan step | See [Module6-Lab4-IaC-Security-Review](Module6-Lab4-IaC-Security-Review/StudentGuide.md) (drafted) |
+| 5 | Capstone: Full-Chain Engagement & Report Writeup | One continuous, time-boxed run across a freshly-reset Module 3–5 stack, culminating in a client-ready report — **no embedded flags**, rubric-graded | See [Module6-Lab5-Capstone-Full-Chain](Module6-Lab5-Capstone-Full-Chain/StudentGuide.md) (drafted) |
+
+Actual: Labs 1, 3, 4 have 3 core + 1 harder-mode embedded/derivable flags each (same
+pattern as Modules 2–5). Lab 2 uses instructor/self-verified checkpoints instead of
+embedded strings (Pacu produces no course-specific output) — see its InstructorKey's
+flag-mechanics note. Lab 5 has no flags at all, rubric-graded — resolved as
+predicted below, confirmed during drafting.
+
+## Tooling to plan for
+
+Real or closely-mirrored versions of: ScoutSuite/Prowler, Pacu, trufflehog/gitleaks,
+checkov/tfsec. Decide per-tool whether to install genuine upstream tooling (more
+authentic, more environment/version risk) or thin lab-specific shims that produce
+compatible output (safer to maintain, less "real world" transfer). Recommend genuine
+tooling wherever the mock services can be made to satisfy it without deep surgery,
+shims only where necessary.
+
+## Design questions — resolved during Lab 1–5 drafting
+
+- **Lab 5 rubric:** written and included in its InstructorKey (completeness of
+  chain, correct risk ratings, attack-narrative quality, remediation quality, report
+  structure, time-box awareness — 100 points total, suggested 70-point pass bar).
+- **Fresh reset vs. snapshot:** resolved as fresh reset, per the original leaning —
+  requires a new `labctl reset` capability (not previously needed in Modules 3–5,
+  since those modules didn't need to *clear* student-created persistent state
+  between runs). This is now Module 6's single biggest new infrastructure
+  requirement — see [Module6-Build-Spec.md](Module6-Build-Spec.md).
+- **Tool version drift:** deferred to build time — each lab's InstructorKey flags
+  pinning tool versions as a Known Limitation; no specific versions chosen yet.
+
+See [Module6-Build-Spec.md](Module6-Build-Spec.md) for the full architecture
+summary, master flag index, and cross-module continuity checklist.
+
+## Course-level note
+
+With this module, the SoulSecure Inc. scenario closes its loop: Module 2 mapped the
+attack surface, Module 3 got a foothold, Module 4 turned that foothold into elevated
+access, Module 5 made it durable and let it spread, and Module 6 proves the whole
+thing with tooling and writes it up like a real client would receive. Worth a
+short course-level README once all six modules exist, cross-linking each
+`Module{N}-Overview.md`.

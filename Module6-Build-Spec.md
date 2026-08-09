@@ -1,0 +1,107 @@
+# Module 6 — Build Spec (Cloud Pentesting Tools & Hands-on Labs)
+
+> **⚠️ PLANNED CONTENT — nothing in this document is deployed.** Consolidated
+> implementation checklist, mirroring Modules 3–5's Build-Spec docs. Ground truth
+> lives in each lab's InstructorKey ([Lab1](Module6-Lab1-Posture-Assessment/InstructorKey.md)
+> through [Lab5](Module6-Lab5-Capstone-Full-Chain/InstructorKey.md)); this is the
+> at-a-glance index.
+
+## Architecture summary — three different infrastructure patterns in one module
+
+Unlike Modules 3–5 (one consistent hand-rolled Flask-mock pattern throughout),
+Module 6 deliberately uses **three different infrastructure approaches**, matched to
+what each lab's tools actually require:
+
+| Labs | Infrastructure | Why |
+|---|---|---|
+| 1–2 | **LocalStack** — new, parallel, real-AWS-API-shaped environment | Real tools (Prowler, ScoutSuite, Pacu) need real API request/response shapes; Modules 3–5's mocks are explicitly not compatible (documented in every one of their Known Limitations) |
+| 3 | **Static files** — reuses Module 3 Lab 4's git repo unmodified, plus one new file dump | Secret-scanning tools operate on file/git content, not a live API — no new service needed |
+| 4 | **Static files** — new Terraform source tree | IaC scanners are pure static analysis — no live infrastructure, no credentials, at all |
+| 5 | **Full Module 3–5 stack, freshly reset** | Capstone replays the real engagement; needs a working `labctl reset` (new capability) |
+
+## New containers/services
+
+| Name | Purpose | Labs |
+|---|---|---|
+| `localstack` | Real AWS API emulation | 1, 2 |
+
+No other new containers this module — Labs 3–4 are pure static assets, Lab 5 reuses
+existing infrastructure.
+
+## New static assets (build once, no dynamic generation needed)
+
+| Asset | Lab | Notes |
+|---|---|---|
+| `module6/seed_localstack.py` | 1, 2 | Idempotent seed script — see Lab 1/2 InstructorKeys for exact resources |
+| `module6/soulsecure-webapp-dump/` | 3 | New file tree with base64 + false-positive + binary-embedded secrets |
+| `module6/soulsecure-terraform/` | 4 | New Terraform source tree |
+| `module6/check-remediation.sh` | 4 | Verifies student's `network.tf` edit |
+| `Module6-Lab5-Report-Template.md` | 5 | Starter document for the capstone deliverable |
+
+## New `labctl` capability required
+
+`labctl reset` — clears all student-created state across `iam-sim` (users, policy
+versions, trust-policy edits), Jenkins (job-config backdoors, `/userContent/`), and
+`docker-proxy` (container records) back to canonical seed state, without a full
+image rebuild. **Required for Lab 5**; also useful operationally for resetting
+between student cohorts on Modules 3–5 generally, so worth prioritizing even beyond
+this module's immediate need.
+
+## Master flag index (Labs 1–4; Lab 5 has none — rubric-graded)
+
+| Lab | Flag # | Value |
+|---|---|---|
+| 1 | 1 | `flag{2361eeb8da89a1b0cfed7791affb0d00}` |
+| 1 | 2 | `flag{87710d4e5d946788aa34f19227db1293}` |
+| 1 | 3 | `flag{86874cf9925295682b701ab1a6c34fc8}` |
+| 1 | 4 (harder) | `flag{9f113bf4928fab55f48e37d956f55b80}` |
+| 2 | 1–4 | Instructor/self-verified, not embedded strings — see Lab 2 InstructorKey's flag-mechanics note |
+| 3 | 1 | `flag{99440dacd1c5df1c1cb37b53288f41da}` |
+| 3 | 2 | `flag{12df0d18822d1d6717aa41bd06407222}` |
+| 3 | 3 | `flag{32dbc1d785d1d9a11d6a93f77e3f0eca}` |
+| 3 | 4 (harder) | `flag{25ee7fa4ece475253ec07dd7d82e8c2d}` |
+| 4 | 1 | `flag{12619665432a3c96437b87c7b96e896d}` |
+| 4 | 2 | `flag{c3ae4b3c35750c5b136829cceed7b10d}` |
+| 4 | 3 | `flag{97f409cf01cab031eb48dbc42c86ec95}` |
+| 4 | 4 (harder) | `flag{8151a3e59ed6cc9709a8f5c910b51ec3}` (earned via student edit + verification script, not a static lookup) |
+| 5 | — | No flags — rubric-graded report, see Lab 5 InstructorKey |
+
+**16 embedded/verifiable flags + 1 rubric-graded capstone**, a deliberate departure
+from the prior three modules' uniform 20-flag pattern — flag this clearly to
+whichever grading/LMS tooling tracks course-wide flag counts, so Module 6 isn't
+expected to report "20" like Modules 2–5 did.
+
+## Cross-module continuity checklist
+
+- [ ] Lab 1/2's LocalStack seed mirrors Modules 3–5's *severity story* (escalating
+      stakes: Module 4's same-account trust-policy gap vs. Module 6 Lab 1's
+      any-account trust-policy gap) without being a literal re-implementation
+- [ ] Lab 3 reuses Module 3 Lab 4's `site-src-backup` git repo byte-for-byte — no
+      drift between the two copies
+- [ ] Lab 4's Terraform resource tags use the exact same flag values students would
+      recognize the *pattern* of from earlier modules, but distinct values (these
+      are new findings, not the same live ones re-flagged)
+- [ ] Lab 5's required `labctl reset` genuinely clears **all** Module 5 persistence
+      state — test explicitly with a "plant everything, reset, verify nothing
+      survives" pass before trusting it for grading
+
+## Deferred/not-yet-decided items
+
+- `Module6-Docker-Ops.md` — write once implemented; will need to document the
+  LocalStack service alongside Modules 3–5's existing gateway architecture.
+- OVA export strategy — Module 6 likely doesn't need per-lab OVAs at all in the same
+  way Modules 2–5 do; Labs 3–4 are static files distributable as a plain zip, Labs
+  1–2 need LocalStack specifically (not the main course VM), and Lab 5 needs the
+  full main stack. Revisit whether the OVA pattern even applies to this module once
+  it's built.
+- LocalStack Community vs. Pro — confirm which Prowler/ScoutSuite/Pacu checks this
+  module depends on are actually supported before committing to Community edition
+  (see Lab 1 InstructorKey's Known Limitations).
+
+## Course-completion note
+
+With Module 6 specced, all six modules of the Cloud Pentest course now have full
+lab plans — Module 2 built and shipping, Modules 3–6 fully drafted
+(StudentGuide + InstructorKey + Build-Spec each) and ready to implement once Module
+2 finishes testing, per the original request to prepare everything in advance
+without touching the VM.
