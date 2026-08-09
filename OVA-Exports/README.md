@@ -17,7 +17,7 @@ dependency, and importing one has no effect on the others.
 ## Why the sizes are all cumulative, not per-lab
 
 Labs 2–5 build on shared infrastructure from earlier labs (same DNS zone, same nginx
-service, same API service — see [Module2-Docker-Ops.md](../Module2-Docker-Ops.md) for
+service, same API service — see [Module2-Docker-Ops.md](../Module2-Reconnaissance-Enumeration/Docker-Ops.md) for
 how `LAB_LEVEL` gating works). So "Lab 3" here means "Labs 1 through 3 content, Lab 4/5
 content hidden" — matching exactly what a student would see if they'd worked the labs
 in order up through that point. This was a deliberate tradeoff over building 5 fully
@@ -38,7 +38,7 @@ isolated environments (see that doc for the reasoning).
    - Starts exactly the lab level baked into that OVA (`/opt/soulsecure-labs/lab.level`)
    - No manual `labctl` invocation required — though it's still there if you want to
      switch levels later (`ssh tester@<ip>`, then see
-     [Module2-Docker-Ops.md](../Module2-Docker-Ops.md))
+     [Module2-Docker-Ops.md](../Module2-Reconnaissance-Enumeration/Docker-Ops.md))
 4. Give students the VM's IP (shown by `cat /opt/soulsecure-labs/.env` over SSH, or
    just check your hypervisor's network info) — that's the `<TARGET_IP>` referenced
    throughout each lab's StudentGuide.
