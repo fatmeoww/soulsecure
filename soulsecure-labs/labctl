@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# labctl -- control which module/level of the SoulSecure lab is running on
+# this host.
+#
+# One Docker Compose stack, gated on two env vars: LAB_MODULE (which course
+# module is active) and LAB_LEVEL (level within that module, 1-5). Module 2
+# content stays fully unlocked once LAB_MODULE moves past 2 -- same tenant,
+# doesn't reset (see Module3-Overview.md). Switching module/level just
+# recreates containers with different env vars -- no rebuild needed unless
+# source files changed.
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$DIR/.env"
+cd "$DIR"
+
+usage() {
+  cat <<EOF
+Usage: labctl <command> [args]
+
+Commands:
+  start <1-5>            Module 2 shorthand for 'startm 2 <level>'
+  switch <1-5>            Alias for start
+  startm <module> <level> Bring the stack up at MODULE/LEVEL (e.g. 'startm 3 1')
+                           (builds images if needed, detects LAB_IP, writes
+                           .env, docker compose up -d)
+  switchm <module> <level> Alias for startm
+  stop                     docker compose down (stops and removes all containers)
+  restart <1-5>            stop, then start <level> (Module 2 shorthand)
+  restartm <module> <level> stop, then startm <module> <level>
+  status                   Show current LAB_MODULE/LAB_LEVEL and container status
+  logs <service>           Follow logs for one service (dns, www, api, storage,
+                           jenkins, vpn, osint, mail)
+  rebuild                  Rebuild all images from source (after editing app/nginx/dns files)
+EOF
+}
+
+set_level() {
+  local module="$1" level="$2"
+  case "$module" in
+    2|3|4|5|6) ;;
+    *) echo "labctl: module must be 2-6, got '$module'" >&2; exit 1 ;;
+  esac
+  case "$level" in
+    1|2|3|4|5) ;;
+    *) echo "labctl: level must be 1-5, got '$level'" >&2; exit 1 ;;
+  esac
+  ./detect-ip.sh
+  # merge LAB_MODULE/LAB_LEVEL into .env (detect-ip.sh already wrote LAB_IP/LAB_CIDR)
+  grep -vE '^(LAB_MODULE|LAB_LEVEL)=' "$ENV_FILE" > "$ENV_FILE.tmp" || true
+  mv "$ENV_FILE.tmp" "$ENV_FILE"
+  {
+    echo "LAB_MODULE=$module"
+    echo "LAB_LEVEL=$level"
+  } >> "$ENV_FILE"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  start|switch)
+    level="${2:?labctl: start requires a level 1-5}"
+    set_level 2 "$level"
+    docker compose up -d --build
+    echo
+    echo "== soulsecure-lab running at MODULE=2 LEVEL=$level =="
+    docker compose ps
+    ;;
+  startm|switchm)
+    module="${2:?labctl: startm requires a module 2-6}"
+    level="${3:?labctl: startm requires a level 1-5}"
+    set_level "$module" "$level"
+    docker compose up -d --build
+    echo
+    echo "== soulsecure-lab running at MODULE=$module LEVEL=$level =="
+    docker compose ps
+    ;;
+  stop)
+    docker compose down
+    ;;
+  restart)
+    level="${2:?labctl: restart requires a level 1-5}"
+    docker compose down
+    set_level 2 "$level"
+    docker compose up -d --build
+    docker compose ps
+    ;;
+  restartm)
+    module="${2:?labctl: restartm requires a module 2-6}"
+    level="${3:?labctl: restartm requires a level 1-5}"
+    docker compose down
+    set_level "$module" "$level"
+    docker compose up -d --build
+    docker compose ps
+    ;;
+  status)
+    if [ -f "$ENV_FILE" ]; then
+      echo "-- $ENV_FILE --"
+      cat "$ENV_FILE"
+      echo
+    else
+      echo "No .env yet -- run 'labctl start <level>' or 'labctl startm <module> <level>' first."
+    fi
+    docker compose ps
+    ;;
+  logs)
+    svc="${2:?labctl: logs requires a service name}"
+    docker compose logs -f "$svc"
+    ;;
+  rebuild)
+    docker compose build --no-cache
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

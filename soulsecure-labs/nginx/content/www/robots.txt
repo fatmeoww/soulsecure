@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /staging-notes/
+Disallow: /internal-tools/
+Disallow: /api/internal/

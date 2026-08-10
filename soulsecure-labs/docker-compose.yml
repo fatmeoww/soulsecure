@@ -1,0 +1,127 @@
+name: soulsecure-lab
+
+services:
+  dns:
+    build: ./dns
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+      - LAB_IP=${LAB_IP}
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+
+  www:
+    build: ./nginx
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+    ports:
+      - "80:80"
+      - "443:443"
+
+  # api/storage/vpn are reverse-proxied through www on 443 by hostname now --
+  # not published directly, only reachable on the docker-compose network
+  # (which www's nginx container is also on). This is what makes the port
+  # scan realistic: these three no longer show up as open ports at all.
+  api:
+    build: ./apps
+    command: ["python", "api_app.py"]
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+    expose:
+      - "8080"
+
+  storage:
+    build: ./apps
+    command: ["python", "storage_app.py"]
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+    expose:
+      - "8081"
+
+  jenkins:
+    build: ./apps
+    command: ["python", "jenkins_app.py"]
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+    ports:
+      - "9090:9090"
+
+  vpn:
+    build: ./apps
+    command: ["python", "vpn_app.py"]
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+    expose:
+      - "943"
+
+  # Module 3 Lab 2 -- internal-only services, no published ports, no vhost/
+  # DNS. Reachable only by other containers on this compose network (i.e.
+  # only via api's SSRF routes) -- never from outside the Docker host.
+  config-service:
+    build: ./apps
+    command: ["python", "config_service.py"]
+    restart: unless-stopped
+    expose:
+      - "8500"
+
+  imds-sim:
+    build: ./apps
+    command: ["python", "imds_sim.py"]
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  # Module 4 -- mock IAM/STS control plane, reverse-proxied via www on 443
+  # at iam.soulsecure.lab, same pattern as api/storage/vpn.
+  iam-sim:
+    build: ./apps
+    command: ["python", "iam_sim.py"]
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+    expose:
+      - "8600"
+
+  osint:
+    build: ./apps
+    command: ["python", "osint_app.py"]
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+      - LAB_IP=${LAB_IP}
+      - LAB_CIDR=${LAB_CIDR}
+    ports:
+      - "9091:9091"
+
+  mail:
+    build: ./mail
+    restart: unless-stopped
+    ports:
+      - "25:25"
+
+  grafana-decoy:
+    build: ./apps
+    command: ["python", "grafana_app.py"]
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+  honeypot:
+    build: ./honeypot
+    restart: unless-stopped
+    ports:
+      - "2121:2121"

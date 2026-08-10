@@ -1,0 +1,14 @@
+[Unit]
+Description=SoulSecure Lab - start the appliance assigned module/lab level on boot
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/soulsecure-labs
+ExecStart=/bin/sh -c '/opt/soulsecure-labs/labctl startm $(cat /opt/soulsecure-labs/lab.module 2>/dev/null || echo 2) $(cat /opt/soulsecure-labs/lab.level)'
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+Contact: mailto:security@soulsecure.lab
+Expires: 2027-01-01T00:00:00.000Z
+Preferred-Languages: en, th
+Canonical: https://www.soulsecure.lab/.well-known/security.txt
+# build artifacts are served from /assets/js/ -- please don't scan these,
+# they're just static bundles (dev note, left in by mistake)
