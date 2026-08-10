@@ -1,18 +1,27 @@
 # Module 2 — OVA Exports
 
 Five standalone VMware appliance files, one per lab, exported from the same master VM
-(`Ubuntu 22 - labs master claude`) at a different `LAB_LEVEL` each time.
+(`Ubuntu 22 - labs master claude`) at a different `LAB_MODULE=2 LAB_LEVEL` each time.
+Plus one Module 3 export (all 5 labs, `LAB_MODULE=3 LAB_LEVEL=5`).
 
 | File | Size | Contains |
 |---|---|---|
-| `SoulSecure-Lab-Module2-Lab1.ova` | ~4.46 GB | Lab 1 only |
-| `SoulSecure-Lab-Module2-Lab2.ova` | ~4.46 GB | Labs 1–2 |
-| `SoulSecure-Lab-Module2-Lab3.ova` | ~4.45 GB | Labs 1–3 |
-| `SoulSecure-Lab-Module2-Lab4.ova` | ~4.45 GB | Labs 1–4 |
-| `SoulSecure-Lab-Module2-Lab5.ova` | ~4.45 GB | Labs 1–5 (full) |
+| `SoulSecure-Lab-Module2-Lab1.ova` | ~4.41 GB | Module 2, Lab 1 only |
+| `SoulSecure-Lab-Module2-Lab2.ova` | ~4.41 GB | Module 2, Labs 1–2 |
+| `SoulSecure-Lab-Module2-Lab3.ova` | ~4.41 GB | Module 2, Labs 1–3 |
+| `SoulSecure-Lab-Module2-Lab4.ova` | ~4.40 GB | Module 2, Labs 1–4 |
+| `SoulSecure-Lab-Module2-Lab5.ova` | ~4.40 GB | Module 2, Labs 1–5 (full) |
+| `SoulSecure-Lab-Module3-Lab5.ova` | ~4.41 GB | Module 2 (full) + Module 3, Labs 1–5 (full) |
 
 Each file is genuinely self-contained and independent — there is no cross-file
 dependency, and importing one has no effect on the others.
+
+**2026-08-10: all 5 Module 2 files re-exported** to pick up a fix for a real bug —
+`docker-compose.yml` never passed the `LAB_IP` env var into the `osint` container, so
+the Recon Toolkit GUI's displayed `curl` commands showed a stale/hardcoded IP
+(`192.168.174.136`) regardless of the appliance's actual current IP. Every OVA in
+this folder now correctly reflects whatever IP the appliance gets on boot. The
+Module 3 file was exported after the fix already landed, so it was never affected.
 
 ## Why the sizes are all cumulative, not per-lab
 

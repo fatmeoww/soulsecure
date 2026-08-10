@@ -57,8 +57,11 @@ dig soulsecure.lab
 พอร์ตของตัวเอง เป็น utility ไม่ใช่ target)
 
 💡 **มี GUI ให้ใช้** — เปิด `http://<TARGET_IP>:9091/` ในเบราว์เซอร์ กรอกช่อง กดปุ่ม
-ได้เลย ทุกผลลัพธ์โชว์คำสั่ง curl ที่เทียบเท่าให้ดูด้วย เหมาะสำหรับทำความเข้าใจก่อน
-ไปใช้ command line เองใน Lab 2-5 (ที่ไม่มี GUI ให้แล้ว)
+ได้เลย ทุกผลลัพธ์โชว์คำสั่ง curl ที่เทียบเท่าให้ดูด้วย การ์ด 1-4 (RDAP/ASN/CT-log/
+Shodan-search) มีเฉพาะ Lab นี้ ส่วนการ์ด 5 เป็นต้นไป ("Recon Toolkit" — DNS Lookup,
+HTTP Request Tool, TLS Certificate Viewer, Passive DNS History) เป็นเครื่องมือจริง
+ที่ใช้ได้ต่อเนื่องตลอด Lab 2-5 ด้วยเช่นกัน ดูรายละเอียดขั้นตอนแบบคลิกทีละจุดได้ที่
+[Lab 1 Walkthrough](Lab1-CloudAssetDiscovery/Walkthrough-TH.md)
 
 หรือใช้ command line ตรงๆ:
 ```bash
@@ -174,6 +177,11 @@ cert ใบนี้ครอบคลุมหลาย hostname มาก — 
 Lab 2 ทิ้ง hint ไว้ว่า "internal API base: /api/internal/" — ถึงเวลาเจาะ
 `api.soulsecure.lab` อย่างจริงจัง (**recon เท่านั้น ห้าม exploit ในโมดูลนี้**)
 
+💡 **มี GUI ให้ใช้เหมือนเดิม** — การ์ดที่ 6 "HTTP(S) Request Tool" ครอบคลุมทั้ง lab
+นี้ ทั้ง REST และ GraphQL (เปลี่ยน Method เป็น POST แล้วช่อง Body จะโผล่ขึ้นมาเอง)
+รายละเอียดขั้นตอนแบบคลิกทีละจุดดูได้ที่
+[Lab 3 Walkthrough](Lab3-API-Reconnaissance/Walkthrough-TH.md)
+
 ### ขั้นตอน
 
 **1) หา API spec**
@@ -224,7 +232,13 @@ curl -sk https://api.soulsecure.lab/graphql \
 
 ### สถานการณ์
 Lab 1 มี HTML comment หลุดชื่อ bucket `soulsecure-prod-assets` พร้อม TODO
-"ทำให้ private ก่อน launch" — ซึ่งไม่มีใครทำ
+"ทำให้ private ก่อน launch" — ซึ่งไม่มีใครทำ (เจอ comment นี้ได้จาก
+`curl -sk https://www.soulsecure.lab/ | grep -i "<!--"` หรือกด view-source บนหน้า
+เว็บ)
+
+💡 **มี GUI ให้ใช้เหมือนเดิม** — การ์ดที่ 6 "HTTP(S) Request Tool" ใช้ยิงทุก path
+ของ bucket ได้เลย (แค่เปลี่ยนช่อง Path) รายละเอียดขั้นตอนแบบคลิกทีละจุดดูได้ที่
+[Lab 4 Walkthrough](Lab4-Object-Storage-Enumeration/Walkthrough-TH.md)
 
 ### ขั้นตอน
 
@@ -274,6 +288,12 @@ curl -sk "https://storage.soulsecure.lab/storage/v1/b/soulsecure-gcs-assets/o"
 ### สถานการณ์
 lab สุดท้าย — หาว่าอะไรอยู่ "หน้า" service จริง (CDN/WAF) แล้วหา origin
 ตัวจริงที่อยู่ข้างหลัง ซึ่งมักไม่มีการป้องกันแบบเดียวกับที่ CDN มี
+
+💡 **มี GUI ให้ใช้เหมือนเดิม** — การ์ดที่ 6 "HTTP(S) Request Tool" ใช้ครอบคลุมได้
+เกือบทั้ง lab (header inspection, robots/security.txt, JS bundle, origin bypass, WAF
+canary, API 404) บวกกับการ์ดใหม่ **"Passive DNS History"** ที่โผล่ขึ้นมาเฉพาะตอนนี้
+(เลื่อนลงล่างสุดของหน้า) รายละเอียดขั้นตอนแบบคลิกทีละจุดดูได้ที่
+[Lab 5 Walkthrough](Lab5-CDN-Origin-Tech-Fingerprinting/Walkthrough-TH.md)
 
 ### ขั้นตอน
 

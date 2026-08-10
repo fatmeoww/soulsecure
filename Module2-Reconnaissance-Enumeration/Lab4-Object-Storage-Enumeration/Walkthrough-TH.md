@@ -29,8 +29,33 @@ TODO "ทำให้ private ก่อน launch" — ซึ่งไม่ม�
 
 ## ขั้นที่ 2: Permutation — เดาชื่อ bucket จากรูปแบบที่พบบ่อย
 
-ลองเปลี่ยนแค่ช่อง **Path** ไล่ทีละชื่อ (Hostname/Method เดิม) แล้วดู **HTTP status**
-ที่มุมซ้ายบนของผลลัพธ์ทุกครั้ง:
+**คำถามสำคัญ: แล้วจะรู้ได้ยังไงว่าต้องลองชื่อไหน?** — คำตอบคือไม่มีใครรู้แน่ๆ ล่วงหน้า
+นี่คือเทคนิคจริงที่ใช้ในงาน pentest จริง เรียกว่า **bucket name permutation/brute-force**
+(เครื่องมือจริงอย่าง S3Scanner, GCPBucketBrute ก็ทำงานแบบนี้เป๊ะ): เอาชื่อที่หลุดมา
+1 ชื่อ (`soulsecure-prod-assets` จากขั้นที่ 1) มาสร้าง wordlist จาก pattern ที่องค์กร
+จริงมักตั้งชื่อกันบ่อยๆ:
+
+- **environment suffix:** `-dev`, `-staging`, `-prod`, `-test`
+- **region suffix:** `-eu`, `-us`, `-ap`
+- **purpose suffix:** `-backups`, `-backup`, `-logs`, `-state`, `-tfstate`,
+  `-terraform-state`, `-static`, `-public`, `-assets`
+
+เอา prefix `soulsecure-` ผสมกับ suffix พวกนี้ ไล่ยิงทีละชื่อ (ไม่ต้องเดาถูกทุกชื่อ —
+ในของจริงก็เดาพลาดเยอะกว่าเดาถูกเสมอ):
+
+```bash
+for b in soulsecure-dev-assets soulsecure-staging-assets soulsecure-test-assets \
+         soulsecure-backups soulsecure-backups-eu soulsecure-logs \
+         soulsecure-state soulsecure-tfstate soulsecure-terraform-state \
+         soulsecure-static soulsecure-public; do
+  echo -n "$b : "
+  curl -sk -o /dev/null -w '%{http_code}\n' -H "Host: storage.soulsecure.lab" "https://192.168.174.136/$b/"
+done
+```
+
+หรือถ้าอยากทำผ่าน GUI ก็เปลี่ยนแค่ช่อง **Path** ไล่ทีละชื่อในลิสต์ด้านบน (Hostname/
+Method เดิม) แล้วดู **HTTP status** ที่มุมซ้ายบนของผลลัพธ์ทุกครั้ง — ชื่อที่ตอบ 200
+หรือ 403 (ไม่ใช่ 404) คือชื่อที่ "เดาถูก" ว่ามีอยู่จริง:
 
 | Path ที่ลอง | Status | ความหมาย |
 |---|---|---|
@@ -98,6 +123,12 @@ SoulSecure ไม่ได้ใช้แค่ S3 — Google Cloud Storage ม�
 `/storage/v1/b/<bucket>/o` (list) และ `/storage/v1/b/<bucket>/o/<object>?alt=media`
 (ดาวน์โหลดไฟล์) **hostname เดียวกันเป๊ะ** (`storage.soulsecure.lab`) แค่ path คนละ
 รูปแบบ
+
+**ชื่อ bucket `soulsecure-gcs-assets` ก็ยังเป็นการเดาแบบเดียวกับขั้นที่ 2 — ไม่มี
+hint ตรงๆ ที่ไหนในเกมส์นี้เลย** ต้องอาศัย 2 อย่างประกอบกัน: (1) ใช้ suffix เดิมจาก
+wordlist ขั้นที่ 2 อย่าง `-assets` ผสมกับ (2) ไหวตัวว่า "prod-assets" เป็นแค่ AWS S3,
+องค์กรจริงจำนวนมากใช้ cloud provider มากกว่า 1 เจ้า (multi-cloud) จึงลองเปลี่ยนจาก
+path แบบ S3 ไปเป็น path แบบ GCS ดูบ้าง — เป็นทักษะ "อย่าสมมติว่า provider เดียวจบ"
 
 **ขั้นแรก — list ดูว่ามีอะไรบ้าง:**
 - **Path:** `/storage/v1/b/soulsecure-gcs-assets/o`
