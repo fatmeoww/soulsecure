@@ -22,6 +22,7 @@ def _module_level(module_num):
 
 
 M3 = _module_level(3)
+M5 = _module_level(5)
 
 PAGE = """<!DOCTYPE html>
 <html><head><title>Dashboard [Jenkins]</title></head>
@@ -107,6 +108,8 @@ export AWS_SECRET_ACCESS_KEY=fakeSecretKeyForLabPurposesOnly1234567890AB
 """
 
     USER_CONTENT = {}  # filename -> content, in-memory, reset on restart
+    BACKDOORED_JOBS = set()  # Module 5 Lab 5: jobs whose config.xml was backdoored
+    ORIGINAL_CONFIG_XML = dict(CONFIG_XML)  # snapshot for /admin/reverse-backdoors
 
     @app.route("/api/json")
     def api_json():
@@ -140,6 +143,26 @@ export AWS_SECRET_ACCESS_KEY=fakeSecretKeyForLabPurposesOnly1234567890AB
 
         if "credentials.xml" in script:
             return Response(CREDENTIALS_XML, mimetype="text/plain")
+
+        # Module 5 Lab 5: job-config backdoor. Checked BEFORE the generic
+        # userContent-write pattern below, since a job-config write also
+        # contains "new File(" + ".text" + "=" and would otherwise get
+        # misrouted into that branch.
+        if M5 >= 5 and "new File(" in script and "jobs/" in script and "config.xml" in script:
+            import re
+            m = re.search(r'jobs/([\w\-]+)/config\.xml', script)
+            job_name = m.group(1) if m else None
+            m2 = re.search(r'=\s*"(.*)"', script, re.DOTALL)
+            new_content = m2.group(1) if m2 else ""
+            if job_name and job_name in CONFIG_XML and "<hudson.tasks.Shell>" in new_content:
+                CONFIG_XML[job_name] = new_content
+                BACKDOORED_JOBS.add(job_name)
+                return Response(
+                    "config updated\n<!-- flag{17505a3ed3e5019ecd053a6430313ff2} -->\n",
+                    mimetype="text/plain",
+                )
+            return Response("error: job not found or content missing a recognizable build step\n",
+                             mimetype="text/plain")
 
         if "new File(" in script and ".text" in script and "=" in script:
             # Extract a target filename under userContent/ -- best-effort
@@ -177,6 +200,19 @@ export AWS_SECRET_ACCESS_KEY=fakeSecretKeyForLabPurposesOnly1234567890AB
         if content is None:
             return Response("Not Found", status=404)
         return Response(content, mimetype="text/plain")
+
+    if M5 >= 5:
+        @app.route("/admin/reverse-backdoors", methods=["POST"])
+        def admin_reverse_backdoors():
+            """Internal-only bridge route -- called by iam-sim's
+            /admin/simulate-deep-audit, not part of the student-facing
+            surface (no auth of its own; only reachable Docker-internally,
+            same pattern as backup_admin_app.py's register-backdoor-key)."""
+            for job_name in list(BACKDOORED_JOBS):
+                if job_name in ORIGINAL_CONFIG_XML:
+                    CONFIG_XML[job_name] = ORIGINAL_CONFIG_XML[job_name]
+                BACKDOORED_JOBS.discard(job_name)
+            return jsonify(status="reversed")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=9090)

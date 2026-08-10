@@ -14,7 +14,11 @@ scheme as Module 3.
 """
 import os
 import secrets
-from flask import Flask, request, jsonify
+from flask import Flask, Response, request, jsonify
+try:
+    import requests as pyrequests
+except ImportError:
+    pyrequests = None
 
 app = Flask(__name__)
 LAB_MODULE = int(os.environ.get("LAB_MODULE", "2"))
@@ -30,6 +34,7 @@ def _module_level(module_num):
 
 
 M4 = _module_level(4)
+M5 = _module_level(5)
 
 ACCOUNT_ID = "445566778899"
 
@@ -132,6 +137,20 @@ if M4 >= 5:
         {"Effect": "Allow", "Action": ["secretsmanager:GetSecretValue", "secretsmanager:ListSecrets"], "Resource": "*"}
     )
 
+if M5 >= 2:
+    POLICIES["InternalSvcRolePolicy"] = {
+        "description": "Permissions for the internal-svc instance role reached via the bastion pivot.",
+        "default": "v1",
+        "versions": {"v1": {
+            "Version": "2012-10-17",
+            "Statement": [
+                {"Effect": "Allow", "Action": ["sts:GetCallerIdentity"], "Resource": "*"},
+                {"Effect": "Allow", "Action": ["compute:AccessDockerProxy"],
+                 "Resource": "arn:aws:compute:::docker-proxy"},
+            ],
+        }},
+    }
+
 # ---------------------------------------------------------------------------
 # Principals -- standing AWS-style identities. Credential values are
 # byte-identical to Module 3's (see each principal's source lab noted below).
@@ -204,7 +223,48 @@ if M4 >= 4:
     PRINCIPALS["soulsecure-finance-role"]["access_key_id"] = "ASIAFINANCE77"
     PRINCIPALS["soulsecure-finance-role"]["secret"] = "fin4a1c7d3f9e6b8021d5a3f7c9e1b048c"
 
+if M5 >= 2:
+    # Standing credential, reachable via internal-svc's IMDS mock (Module 5
+    # Lab 2) -- this role's only interesting permission is the Lab 3 hook.
+    PRINCIPALS["soulsecure-internal-svc-role"] = {
+        "type": "role",
+        "arn": f"arn:aws:iam::{ACCOUNT_ID}:role/soulsecure-internal-svc-role",
+        "access_key_id": "ASIAINTERNALSVC04",
+        "secret": "isvc9c2d7f1a4e6b8021d5a3f7c9e1b048",
+        "attached_policies": ["InternalSvcRolePolicy"],
+    }
+
 CREDENTIAL_INDEX = {p["access_key_id"]: name for name, p in PRINCIPALS.items() if p.get("access_key_id")}
+
+# ---------------------------------------------------------------------------
+# Module 5 mutable state -- backdoors, revocations, and scheduled tasks all
+# genuinely persist server-side and affect subsequent calls, same "actually
+# stateful" bar as Module 4's policy evaluator.
+# ---------------------------------------------------------------------------
+REVOKED_KEYS = set()          # Lab 1: access key IDs revoked by remediation
+LOCKED_POLICIES = set()       # Lab 1: policies remediation locked from further changes
+BACKDOOR_STATE = {}           # Lab 1/5: tracks the new-user backdoor for self-heal
+BACKDOOR_KEYS_SEEN = set()    # Lab 1: every backdoor-sourced access key, for Flag 4
+SCHEDULED_TASKS = []          # Lab 5: automation tasks with a `schedule` field
+REMEDIATION_STATE = {"ran": False}
+DEEP_AUDIT_STATE = {"ran": False}   # Lab 5: gates the harder-mode trust-policy-survives flag
+CANONICAL_PRINCIPALS = set(PRINCIPALS.keys())  # snapshot before any student mutation
+
+BACKUP_ADMIN_URL = "http://backup-admin:8700/admin/register-backdoor-key"
+
+
+def _notify_backup_admin(access_key_id, secret):
+    """Best-effort bridge so a Module 5 Lab 1 backdoor key also works
+    against Module 5 Lab 4's backup-eu admin/export-all check, without a
+    live cross-service auth call on every single storage/backup request."""
+    if not pyrequests:
+        return
+    try:
+        pyrequests.post(BACKUP_ADMIN_URL,
+                         json={"access_key_id": access_key_id, "secret_access_key": secret},
+                         timeout=3)
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
 # GCP-flavored surface (simplified: one custom-role permission list per
@@ -274,6 +334,8 @@ def authenticate():
     secret = request.headers.get("X-Secret-Access-Key")
     if not akid or not secret:
         return None
+    if akid in REVOKED_KEYS:
+        return None  # CredentialsRevoked -- Module 5 Lab 1's simulated remediation
     name = CREDENTIAL_INDEX.get(akid)
     if not name:
         return None
@@ -301,6 +363,14 @@ if M4 >= 1:
         resp = {"Arn": p["arn"], "UserId": p["access_key_id"], "Account": ACCOUNT_ID}
         if M4 >= 3 and is_effectively_admin(principal):
             resp["flag"] = "flag{759f58aac7d06b135e6ee09e6e188a83}"
+        if M5 >= 1 and REMEDIATION_STATE["ran"]:
+            akid = request.headers.get("X-Access-Key-Id")
+            if akid in BACKDOOR_KEYS_SEEN:
+                resp["persistence_flag"] = "flag{e22bc8281bd20434a1aebefae5218b5e}"
+        if (M5 >= 5 and BACKDOOR_STATE.get("self_healed")
+                and request.headers.get("X-Access-Key-Id") == BACKDOOR_STATE.get("access_key_id")
+                and request.headers.get("X-Access-Key-Id") not in REVOKED_KEYS):
+            resp["selfheal_flag"] = "flag{17205c5f7592f7e1eaece480045dcf44}"
         return jsonify(**resp)
 
     @app.route("/iam/whoami-summary")
@@ -328,6 +398,10 @@ if M4 >= 1:
             resp["flag"] = "flag{3148dda5ed81821c98f2a9f5e5691ad9}"
         elif principal == "automation-admin-role":
             resp["note"] = "Full administrative access."
+        elif principal == "soulsecure-internal-svc-role" and M5 >= 2:
+            resp["note"] = ("Has compute:AccessDockerProxy -- points to docker-proxy.internal.soulsecure.lab, "
+                             "reachable via the bastion proxy the same way internal-svc was.")
+            resp["flag"] = "flag{e6654fd5213b02dc8b16d762b3e1afd3}"
         return jsonify(**resp)
 
     @app.route("/gcp/testIamPermissions", methods=["POST"])
@@ -343,6 +417,172 @@ if M4 >= 1:
         if "iam.serviceAccounts.getAccessToken" in requested and "iam.serviceAccounts.getAccessToken" in granted:
             resp["flag"] = "flag{d54dd5f6a25d0552109c0a67c86d8664}"
         return jsonify(**resp)
+
+# ---------------------------------------------------------------------------
+# Module 5 Lab 1: Persistence via IAM Backdoors
+# ---------------------------------------------------------------------------
+def _do_remediation():
+    """Shared logic between /admin/simulate-remediation and
+    /admin/simulate-deep-audit -- returns a plain dict, callers jsonify it."""
+    for akid in ("ASIASOULSECUREAPP01", "ASIASOULSECUREDEPLOY02",
+                 "ASIASOULSECURECIDEPLOY03", "SVCKEY-STORAGE-RO-8841"):
+        REVOKED_KEYS.add(akid)
+    deploy_stmts = POLICIES["DeployRolePolicy"]["versions"]["v1"]["Statement"]
+    POLICIES["DeployRolePolicy"]["versions"]["v1"]["Statement"] = [
+        s for s in deploy_stmts if "iam:PassRole" not in _as_list(s.get("Action", []))
+    ]
+    POLICIES["CIDeployPolicy"]["default"] = "v1"
+    LOCKED_POLICIES.add("CIDeployPolicy")
+    REMEDIATION_STATE["ran"] = True
+    REMEDIATION_STATE["call_count"] = REMEDIATION_STATE.get("call_count", 0) + 1
+    result = {
+        "status": "remediation complete",
+        "revoked_credentials": 4,
+        "patched_policies": ["DeployRolePolicy", "CIDeployPolicy"],
+    }
+    # Module 5 Lab 5's escalated behavior: a student's FIRST remediation
+    # call (Lab 1's own verification step) always preserves the backdoor,
+    # matching Lab 1's InstructorKey exactly, regardless of level -- Flag 4
+    # depends on this. Only a SECOND (or later) call to /admin/simulate-
+    # remediation represents "the follow-up sweep once Lab 5 mechanics are
+    # in play" and catches the new-user backdoor -- which a scheduled
+    # self-heal task then instantly recreates if one exists. Trust-policy
+    # and second-key backdoors are never touched here or by the deep audit.
+    if M5 >= 5 and REMEDIATION_STATE["call_count"] >= 2 and BACKDOOR_STATE.get("username"):
+        uname = BACKDOOR_STATE["username"]
+        old_akid = BACKDOOR_STATE.get("access_key_id")
+        heal_task = next((t for t in SCHEDULED_TASKS if "recreate-backdoor" in t["command"]), None)
+        result["backdoor_user_removed"] = uname
+        if heal_task:
+            # Self-heal fires fast enough that, from the outside, the
+            # credential simply never stopped working -- same access key,
+            # same secret, immediately re-provisioned. (Real automation
+            # couldn't restore an identical secret value after a true
+            # delete; this lab's mechanics are deliberately simplified --
+            # see InstructorKey "Known limitations".)
+            BACKDOOR_STATE["self_healed"] = True
+        elif old_akid:
+            REVOKED_KEYS.add(old_akid)
+            result["self_heal_fired"] = True
+    return result
+
+
+if M5 >= 1:
+    @app.route("/iam/create-user", methods=["POST"])
+    def iam_create_user():
+        principal = authenticate()
+        if not principal or not is_allowed(principal, "iam:CreateUser", "*"):
+            return jsonify(error="AccessDenied"), 403
+        body = request.get_json(silent=True) or {}
+        username = body.get("username", "")
+        if not username:
+            return jsonify(error="username is required"), 400
+        if username in PRINCIPALS:
+            return jsonify(error="EntityAlreadyExists"), 409
+        PRINCIPALS[username] = {
+            "type": "user",
+            "arn": f"arn:aws:iam::{ACCOUNT_ID}:user/{username}",
+            "access_key_id": None,
+            "secret": None,
+            "attached_policies": [],
+        }
+        return jsonify(status="created", username=username)
+
+    @app.route("/iam/attach-user-policy", methods=["POST"])
+    def iam_attach_user_policy():
+        principal = authenticate()
+        if not principal or not is_allowed(principal, "iam:AttachUserPolicy", "*"):
+            return jsonify(error="AccessDenied"), 403
+        body = request.get_json(silent=True) or {}
+        username = body.get("username", "")
+        policy_name = body.get("policy_name", "")
+        target = PRINCIPALS.get(username)
+        if not target:
+            return jsonify(error="NoSuchEntity"), 404
+        if policy_name not in POLICIES:
+            return jsonify(error="NoSuchEntity: policy"), 404
+        target.setdefault("attached_policies", []).append(policy_name)
+        return jsonify(status="attached")
+
+    @app.route("/iam/create-access-key", methods=["POST"])
+    def iam_create_access_key():
+        principal = authenticate()
+        if not principal or not is_allowed(principal, "iam:CreateAccessKey", "*"):
+            return jsonify(error="AccessDenied"), 403
+        body = request.get_json(silent=True) or {}
+        target_name = body.get("target_principal", "")
+        target = PRINCIPALS.get(target_name)
+        if not target:
+            return jsonify(error="NoSuchEntity"), 404
+        new_akid = "AKIA" + secrets.token_hex(8).upper()
+        new_secret = secrets.token_hex(20)
+        resp = {"AccessKeyId": new_akid, "SecretAccessKey": new_secret}
+        if target.get("access_key_id") is None:
+            # First key ever for this identity -- the new-user-backdoor path.
+            target["access_key_id"] = new_akid
+            target["secret"] = new_secret
+            CREDENTIAL_INDEX[new_akid] = target_name
+            is_new_user = target_name not in CANONICAL_PRINCIPALS
+            if is_new_user and is_effectively_admin(target_name):
+                resp["flag"] = "flag{a384b47da8163aad4be0c370913e5b75}"
+                BACKDOOR_STATE["username"] = target_name
+                BACKDOOR_STATE["access_key_id"] = new_akid
+                BACKDOOR_STATE["secret"] = new_secret
+                BACKDOOR_KEYS_SEEN.add(new_akid)
+                _notify_backup_admin(new_akid, new_secret)
+        else:
+            # Second key on an already-existing identity -- modeled as a
+            # synthetic principal sharing the same arn/policies, so every
+            # existing route (is_allowed, whoami-summary, etc.) just works
+            # without needing a "multiple keys" data model everywhere.
+            synth_name = f"{target_name}-key-{secrets.token_hex(3)}"
+            PRINCIPALS[synth_name] = {
+                "type": target["type"],
+                "arn": target["arn"],
+                "access_key_id": new_akid,
+                "secret": new_secret,
+                "attached_policies": list(target.get("attached_policies", [])),
+            }
+            CREDENTIAL_INDEX[new_akid] = synth_name
+            if target_name in ("soulsecure-app-role", "soulsecure-deploy-role",
+                                "soulsecure-ci-deploy", "storage-readonly"):
+                resp["flag"] = "flag{c104a9c00c97ac0271b34df8255e7196}"
+                BACKDOOR_KEYS_SEEN.add(new_akid)
+        return jsonify(**resp)
+
+    @app.route("/iam/update-trust-policy", methods=["POST"])
+    def iam_update_trust_policy():
+        principal = authenticate()
+        if not principal:
+            return jsonify(error="InvalidClientTokenId"), 403
+        body = request.get_json(silent=True) or {}
+        role_name = body.get("role_name", "")
+        add_principal = body.get("add_principal", "")
+        resource = f"arn:aws:iam::{ACCOUNT_ID}:role/{role_name}"
+        if not is_allowed(principal, "iam:UpdateAssumeRolePolicy", resource):
+            return jsonify(error="AccessDenied"), 403
+        role = PRINCIPALS.get(role_name)
+        if not role or "trust_policy" not in role:
+            return jsonify(error="NoSuchEntity"), 404
+        # Additive -- appends a new Allow statement, never removes the
+        # existing one. Deliberately never touched by simulate-deep-audit
+        # either (see Module 5 Lab 5) -- this is the persistence category
+        # nobody thought to check.
+        BACKDOOR_STATE["trust_policy_principal"] = add_principal
+        BACKDOOR_STATE["trust_policy_role"] = role_name
+        role["trust_policy"]["Statement"].append({
+            "Effect": "Allow",
+            "Principal": {"AWS": f"arn:aws:iam::{ACCOUNT_ID}:user/{add_principal}"},
+            "Action": "sts:AssumeRole",
+        })
+        return jsonify(status="updated", flag="flag{240fdca6391a0333e350ee5a7db052b8}")
+
+    @app.route("/admin/simulate-remediation", methods=["POST"])
+    def admin_simulate_remediation():
+        principal = authenticate()
+        if not principal or not is_effectively_admin(principal):
+            return jsonify(error="AccessDenied"), 403
+        return jsonify(**_do_remediation())
 
 # ---------------------------------------------------------------------------
 # Lab 2: IAM Policy Misconfiguration Hunting
@@ -403,6 +643,16 @@ if M4 >= 3:
         if not (is_allowed(principal, "automation:CreateTask", "*")
                 and is_allowed(principal, "iam:PassRole", execution_role)):
             return jsonify(error="AccessDenied"), 403
+        schedule = body.get("schedule")
+        command = body.get("command", "")
+        if M5 >= 5 and schedule and "recreate-backdoor" in command:
+            task_id = "task-" + secrets.token_hex(6)
+            SCHEDULED_TASKS.append({
+                "id": task_id, "command": command, "schedule": schedule,
+                "execution_role": role_name,
+            })
+            return jsonify(status="scheduled", task_id=task_id,
+                            flag="flag{8e3d51e61b9915c926a8d403f3f0bdeb}")
         target = PRINCIPALS.get(role_name)
         if not target or not target.get("access_key_id"):
             return jsonify(error="cannot resolve execution role credentials"), 400
@@ -451,6 +701,8 @@ if M4 >= 3:
         resource = f"arn:aws:iam::{ACCOUNT_ID}:policy/{policy_name}"
         if not is_allowed(principal, "iam:SetDefaultPolicyVersion", resource):
             return jsonify(error="AccessDenied"), 403
+        if policy_name in LOCKED_POLICIES:
+            return jsonify(error="AccessDenied: policy locked following remediation"), 403
         policy = POLICIES.get(policy_name)
         if not policy or version not in policy["versions"]:
             return jsonify(error="NoSuchEntity"), 404
@@ -491,13 +743,23 @@ if M4 >= 4:
             return jsonify(error="AccessDenied: trust policy does not permit AssumeRole"), 403
         if not role.get("access_key_id"):
             return jsonify(error="role has no issuable credentials in this lab"), 400
-        return jsonify(
+        resp = dict(
             AccessKeyId=role["access_key_id"],
             SecretAccessKey=role["secret"],
             Token="session-token-" + secrets.token_hex(8),
             Expiration="2026-12-31T23:59:59Z",
             flag="flag{40228829de824ce9a37786eab838f977}",
         )
+        # Module 5 Lab 5 harder mode: this exact call, made by the Lab 1
+        # trust-policy backdoor principal specifically, AFTER a deep audit
+        # has run, is what proves that category of persistence was never
+        # checked -- distinct from the Module 4 Lab 4 flag above, which
+        # just proves assume-role works at all.
+        if (M5 >= 5 and DEEP_AUDIT_STATE["ran"]
+                and principal == BACKDOOR_STATE.get("trust_policy_principal")
+                and role_name == BACKDOOR_STATE.get("trust_policy_role")):
+            resp["deep_audit_survivor_flag"] = "flag{012f77a55bd7b3679c6798dcb8550562}"
+        return jsonify(**resp)
 
     @app.route("/gcp/impersonate", methods=["POST"])
     def gcp_impersonate():
@@ -516,6 +778,49 @@ if M4 >= 4:
             impersonated_as=target,
             flag="flag{a3904b2cfa7a4e7bf20adf1ac6c4706b}",
         )
+
+# ---------------------------------------------------------------------------
+# Module 5 Lab 4: Data Exfiltration via Storage & Snapshot Abuse
+# ---------------------------------------------------------------------------
+SNAPSHOTS = {}
+if M5 >= 4:
+    @app.route("/rds/create-snapshot", methods=["POST"])
+    def rds_create_snapshot():
+        principal = authenticate()
+        if not principal or not is_effectively_admin(principal):
+            return jsonify(error="AccessDenied"), 403
+        body = request.get_json(silent=True) or {}
+        db_instance = body.get("db_instance", "")
+        snap_id = "snap-" + secrets.token_hex(6)
+        SNAPSHOTS[snap_id] = {"db_instance": db_instance, "status": "available"}
+        return jsonify(id=snap_id, status="available")
+
+    @app.route("/rds/download-snapshot")
+    def rds_download_snapshot():
+        principal = authenticate()
+        if not principal or not is_effectively_admin(principal):
+            return jsonify(error="AccessDenied"), 403
+        snap_id = request.args.get("id", "")
+        if snap_id not in SNAPSHOTS:
+            return jsonify(error="DBSnapshotNotFound"), 404
+        dump = (
+            "-- soulsecure-prod-db snapshot dump (canned, not a real export)\n"
+            "-- pg_dump-shaped placeholder content\n"
+            "CREATE TABLE users (id serial primary key, email text);\n"
+            "-- flag{ea9d12ed25af9413c87489dad20f0287}\n"
+        )
+        return Response(dump, mimetype="text/plain")
+
+    @app.route("/rds/share-snapshot", methods=["POST"])
+    def rds_share_snapshot():
+        principal = authenticate()
+        if not principal or not is_effectively_admin(principal):
+            return jsonify(error="AccessDenied"), 403
+        body = request.get_json(silent=True) or {}
+        snap_id = body.get("snapshot_id", "")
+        if snap_id not in SNAPSHOTS:
+            return jsonify(error="DBSnapshotNotFound"), 404
+        return jsonify(status="shared", flag="flag{222f054e7160f3ed0bf2e5d81b80b04d}")
 
 # ---------------------------------------------------------------------------
 # Lab 5: Secrets Manager / Parameter Store Exploitation
@@ -581,6 +886,33 @@ if M4 >= 5:
         elif name == "soulsecure/stripe/live-key":
             resp["flag"] = "flag{b233cc12d92ac3a3baa20ded1af225c0}"
         return jsonify(**resp)
+
+# ---------------------------------------------------------------------------
+# Module 5 Lab 5: Persistence via CI/CD & Automation
+# ---------------------------------------------------------------------------
+if M5 >= 5:
+    @app.route("/admin/simulate-deep-audit", methods=["POST"])
+    def admin_simulate_deep_audit():
+        principal = authenticate()
+        if not principal or not is_effectively_admin(principal):
+            return jsonify(error="AccessDenied"), 403
+        result = _do_remediation()
+        DEEP_AUDIT_STATE["ran"] = True
+        # Additionally catches this lab's own CI/CD persistence mechanisms
+        # -- removes the scheduled self-heal task and asks jenkins-old to
+        # reverse any backdoored job config. Deliberately does NOT scan or
+        # touch trust policies (Lab 1's Flag 2 backdoor survives this call
+        # on purpose -- see InstructorKey).
+        SCHEDULED_TASKS[:] = [t for t in SCHEDULED_TASKS if "recreate-backdoor" not in t["command"]]
+        if pyrequests:
+            try:
+                pyrequests.post("http://jenkins:9090/admin/reverse-backdoors", timeout=3)
+            except Exception:
+                pass
+        result["deep_audit"] = True
+        result["scheduled_tasks_removed"] = True
+        result["jenkins_job_configs_reversed"] = True
+        return jsonify(**result)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8600)

@@ -95,6 +95,54 @@ services:
     expose:
       - "8600"
 
+  # Module 5 Lab 2 -- bastion is a public vhost (the pivot point students
+  # reach with the Module 3 Lab 5 jump-host key's fingerprint); internal-svc
+  # is internal-only, reachable only from bastion's /proxy.
+  bastion:
+    build: ./apps
+    command: ["python", "bastion_app.py"]
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+    expose:
+      - "80"
+
+  internal-svc:
+    build: ./apps
+    command: ["python", "internal_svc_imds.py"]
+    restart: unless-stopped
+    expose:
+      - "8080"
+
+  # Module 5 Lab 3 -- pure simulation of a Docker Engine API subset.
+  # Internal-only, no published port, no vhost/DNS, reachable only via
+  # bastion's /proxy. SAFETY-CRITICAL: never add a volume/bind mount to
+  # this service, never set privileged: true, never mount the host's
+  # /var/run/docker.sock -- see docker_proxy_sim.py's module docstring.
+  docker-proxy:
+    build: ./apps
+    command: ["python", "docker_proxy_sim.py"]
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+    expose:
+      - "2375"
+
+  # Module 5 Lab 4 -- backup-eu's one dynamic route (everything else on
+  # that vhost stays static nginx content, see nginx/conf/lab-m5.conf).
+  # Internal-only bridge from iam-sim also lands here (register-backdoor-key).
+  backup-admin:
+    build: ./apps
+    command: ["python", "backup_admin_app.py"]
+    restart: unless-stopped
+    environment:
+      - LAB_MODULE=${LAB_MODULE:-2}
+      - LAB_LEVEL=${LAB_LEVEL:-5}
+    expose:
+      - "8700"
+
   osint:
     build: ./apps
     command: ["python", "osint_app.py"]

@@ -145,9 +145,37 @@ remote vpn.soulsecure.lab 1194
             "Jump host: bastion.internal.soulsecure.lab "
             "(only reachable once VPN-connected)\n"
             "flag{b6d5e3a55e1bc426be3522b8b236e253}\n\n"
+            # Genuinely valid RSA-2048 OpenSSH private key (not a placeholder
+            # blob) -- Module 5 Lab 2's bastion pivot checks this key's real
+            # MD5 fingerprint (`ssh-keygen -lf <file> -E md5`), so it has to
+            # actually parse as a key. Generated once at build time, never
+            # used to authenticate anywhere for real.
             "-----BEGIN OPENSSH PRIVATE KEY-----\n"
-            "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\n"
-            "QyNTUxOQAAACBOTFVBUEVBQ0VIT0xERVJOT1RBUkVBTEtFWU5PVFJFQUxBQUFBQUFB\n"
+            "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdzc2gtcn\n"
+            "NhAAAAAwEAAQAAAQEAvXQn9QPamyCPy1l0rlq2iu3yX9BAxUzl98E2KINVoxeXDl7mfGyh\n"
+            "b6igF9VUPlDffM0GxQPDTRmMRx9H6snEjF+cM+yTsSPtjJtPP/xHpKYe8s056K0hprqo7F\n"
+            "BpTLVVrjY2A9CadAbv9me2pyOVzKS0XTAPnIncuW3MLw9aja4XiosAI3WVv9rX3c4dWQ7+\n"
+            "cd2LDm82d0baoYzEdlUXzHHhKBPz+nifjibQs/xOSr7Lp2513Ek6iRGFaERopAwtrJq0Mw\n"
+            "gOhwNQLv2SNqvFK+OZlFoMZHRP7T+mLLXoftP39H19HlzyUeF8P+4fEY/v5PNNBkRiMJKf\n"
+            "a6iSTSNb2wAAA9DyUAXl8lAF5QAAAAdzc2gtcnNhAAABAQC9dCf1A9qbII/LWXSuWraK7f\n"
+            "Jf0EDFTOX3wTYog1WjF5cOXuZ8bKFvqKAX1VQ+UN98zQbFA8NNGYxHH0fqycSMX5wz7JOx\n"
+            "I+2Mm08//Eekph7yzTnorSGmuqjsUGlMtVWuNjYD0Jp0Bu/2Z7anI5XMpLRdMA+cidy5bc\n"
+            "wvD1qNrheKiwAjdZW/2tfdzh1ZDv5x3YsObzZ3RtqhjMR2VRfMceEoE/P6eJ+OJtCz/E5K\n"
+            "vsunbnXcSTqJEYVoRGikDC2smrQzCA6HA1Au/ZI2q8Ur45mUWgxkdE/tP6Ysteh+0/f0fX\n"
+            "0eXPJR4Xw/7h8Rj+/k800GRGIwkp9rqJJNI1vbAAAAAwEAAQAAAQAA7JEeqSnReeOEVWez\n"
+            "9gNP7YCHe8ePxCPsWnKTg1h77CszdGkMEFI/7i2husunZijrk0Bw3jzUonGZuIsBl9cFQZ\n"
+            "jMdAn1t5F6ucM1h7B9xXBUijBkdHu73ss2I9+aR9l8I7g4ZTXA/SEB2FhUEQteV9X9Yl+h\n"
+            "HtcHHIRTcnAO+C6V4S4UloDM2xv18fajDbkld5rKM3iRbQy40ZJI2Wpvu9J9l22VQfEIb3\n"
+            "zhK1xFWRs6RduCUTHJhCTgp8vg6Kyy+cvCS2UuABGpeFPHIXWWZk9UvyQbAhn/PXF47nA5\n"
+            "JEmc9GNrTNXjzBhoWuFI5+EOWyWuzWLIa9VcHU/zCe9RAAAAgAuhTF8QoMFsNC96//2clu\n"
+            "NILG8mv9C8FlgIpnUj69xBBx7JPlq1HNeirGYFU3PmExOuaGqqvonmMvDo5QFuoaHPwhl9\n"
+            "DqQPwXMu8nIufLG+MzLI+xWSaP39qhxR/k3As6t5g3am0mX26dOUVZzgEy8oO0YVlJlcae\n"
+            "JdsgMxUEmpAAAAgQDBVNrP0VHcyus/NNfBgiaKw4xe1Z3B9vXKDNYEy4rFsPTV0QH42Xnp\n"
+            "DJWQEQRN7DhsNfLQMIwj2nQAbYtJ6b+GerI68udvubDO3+rG1lCtFbCqvzeihwpPB5QaI7\n"
+            "PBXG3SpiK3ItJg/Fb3vKbb+6cTQqp9YqyqJX8ylQu6lbVACQAAAIEA+t2EcRt7gOC4fFH/\n"
+            "xQCHqGIrmDkkqOep1sJktsm6m+5vQCF6wB5wdzSJhpVt58bdeDt99RSeTnA0j9FXQe76ey\n"
+            "mA2DXcK26f7DBiJTypiNmvRyVfqYuQLCK2/S/Jb9AJtlR+Pp/GemdwMWY3zQAn5C/eiTTB\n"
+            "bXQGhSwH1hnCLcMAAAAYanVtcC1ob3N0QHNvdWxzZWN1cmUubGFiAQID\n"
             "-----END OPENSSH PRIVATE KEY-----\n"
         ),
     }

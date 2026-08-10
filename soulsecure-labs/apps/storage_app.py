@@ -39,6 +39,7 @@ def _module_level(module_num):
 M2 = _module_level(2)
 M3 = _module_level(3)
 M4 = _module_level(4)
+M5 = _module_level(5)
 
 ACCESS_DENIED_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <Error>
@@ -219,6 +220,29 @@ if M3 >= 1:
         "special_creds": FINANCE_SPECIAL_CREDS,
     }
 
+# ---------------------------------------------------------------------------
+# Module 5 Lab 4: bucket-policy read/write on soulsecure-finance-records.
+# Admin-equivalent only -- same hardcoded-check pattern as the rest of this
+# self-contained app (matches backup_admin_app.py's simplification for the
+# same lab).
+# ---------------------------------------------------------------------------
+BUCKET_POLICY_ADMIN_KEYS = {"ASIAADMIN99": "adm9c2d7f1a4e6b8021d5a3f7c9e1b048"}
+BUCKET_POLICIES = {}
+if M5 >= 4:
+    BUCKET_POLICIES["soulsecure-finance-records"] = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {"Effect": "Allow", "Principal": {"AWS": "arn:aws:iam::445566778899:root"},
+             "Action": "s3:GetObject", "Resource": "arn:aws:s3:::soulsecure-finance-records/*"},
+        ],
+    }
+
+
+def bucket_policy_admin_authenticated():
+    akid = request.headers.get("X-Access-Key-Id")
+    secret = request.headers.get("X-Secret-Access-Key")
+    return akid and secret and BUCKET_POLICY_ADMIN_KEYS.get(akid) == secret
+
 
 def check_auth(bucket_dict):
     """True if the bucket is public, valid special-credential headers were
@@ -245,6 +269,27 @@ def add_headers(resp):
     resp.headers["x-amz-request-id"] = "7B2F1A9C4E6D8801"
     resp.headers["x-amz-bucket-region"] = "us-east-1"
     return resp
+
+if M5 >= 4:
+    @app.route("/soulsecure-finance-records/_policy", methods=["GET"])
+    def finance_bucket_policy_get():
+        return jsonify(**BUCKET_POLICIES["soulsecure-finance-records"])
+
+    @app.route("/soulsecure-finance-records/_policy", methods=["POST"])
+    def finance_bucket_policy_post():
+        if not bucket_policy_admin_authenticated():
+            return jsonify(error="AccessDenied"), 403
+        body = request.get_json(silent=True) or {}
+        account = body.get("add_principal_account", "")
+        if not account:
+            return jsonify(error="add_principal_account is required"), 400
+        BUCKET_POLICIES["soulsecure-finance-records"]["Statement"].append({
+            "Effect": "Allow",
+            "Principal": {"AWS": f"arn:aws:iam::{account}:root"},
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::soulsecure-finance-records/*",
+        })
+        return jsonify(status="policy updated", flag="flag{24c7e5fff5028119ff5ea792639037c6}")
 
 # GCS-style bucket (Lab 4 addition) -- SoulSecure isn't all-AWS. Same
 # permutation-guessing technique, different provider, different URL shape

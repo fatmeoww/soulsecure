@@ -32,6 +32,14 @@ else
     M4_LEVEL=0
 fi
 
+if [ "$LAB_MODULE" -gt 5 ]; then
+    M5_LEVEL=5
+elif [ "$LAB_MODULE" -eq 5 ]; then
+    M5_LEVEL="$LAB_LEVEL"
+else
+    M5_LEVEL=0
+fi
+
 SRC=/opt/nginx-src
 LIVE=/opt/soulsecure-lab
 TLS=$LIVE/tls
@@ -89,6 +97,20 @@ location /files/ {
     autoindex on;
 }
 EOF
+    # Module 5 Lab 4: the one dynamic route on backup-eu -- everything else
+    # on this vhost stays static content served directly by nginx.
+    if [ "$M5_LEVEL" -ge 4 ]; then
+        cat >> /etc/nginx/snippets/backup-extra.conf <<EOF
+location /admin/export-all {
+    set \$upstream_backup_admin backup-admin:8700;
+    proxy_pass http://\$upstream_backup_admin;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Access-Key-Id \$http_x_access_key_id;
+    proxy_set_header X-Secret-Access-Key \$http_x_secret_access_key;
+}
+EOF
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -108,6 +130,9 @@ if [ "$M2_LEVEL" -ge 5 ]; then
 fi
 if [ "$M4_LEVEL" -ge 1 ]; then
     SAN="$SAN,DNS:iam.soulsecure.lab"
+fi
+if [ "$M5_LEVEL" -ge 2 ]; then
+    SAN="$SAN,DNS:bastion.soulsecure.lab"
 fi
 
 if [ ! -f "$TLS/ca.crt" ] || [ ! -f "$TLS/soulsecure.crt" ]; then
@@ -167,7 +192,11 @@ if [ "$M4_LEVEL" -ge 1 ]; then
     cp "$SRC/conf/lab-m4.conf" /etc/nginx/conf.d/40-module4.conf
 fi
 
-echo "soulsecure-nginx: LAB_MODULE=$LAB_MODULE LAB_LEVEL=$LAB_LEVEL (effective M2 level=$M2_LEVEL, M3 level=$M3_LEVEL, M4 level=$M4_LEVEL)"
+if [ "$M5_LEVEL" -ge 2 ]; then
+    cp "$SRC/conf/lab-m5.conf" /etc/nginx/conf.d/50-module5.conf
+fi
+
+echo "soulsecure-nginx: LAB_MODULE=$LAB_MODULE LAB_LEVEL=$LAB_LEVEL (effective M2 level=$M2_LEVEL, M3 level=$M3_LEVEL, M4 level=$M4_LEVEL, M5 level=$M5_LEVEL)"
 echo "soulsecure-nginx: cert SAN = $SAN"
 nginx -t
 

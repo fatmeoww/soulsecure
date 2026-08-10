@@ -1,14 +1,15 @@
 # soulsecure-labs — source code
 
 This is the actual Docker Compose stack behind the SoulSecure Inc. cloud-pentest
-labs (Modules 2–4 so far). Everything here is what's already deployed and verified
+labs (Modules 2–5 so far). Everything here is what's already deployed and verified
 on the shared VM — this folder exists so the team can `git clone` and run their
 **own** independent copy on their **own** VM, instead of everyone sharing one box.
 
 For the story/scenario/flags behind each lab, see the docs one level up
 (`Module2-Reconnaissance-Enumeration/`, `Module3-Initial-Access-Storage-Exploitation/`,
-`Module4-IAM-Exploitation-Privilege-Escalation/`). This README is only about running
-the stack itself.
+`Module4-IAM-Exploitation-Privilege-Escalation/`,
+`Module5-Post-Exploitation-Persistence-Lateral-Movement/`). This README is only
+about running the stack itself.
 
 ## Prerequisites
 
@@ -39,15 +40,17 @@ stack. `./labctl status` shows what's currently running.
 ## Picking what to run: `LAB_MODULE` + `LAB_LEVEL`
 
 Two axes control what's exposed:
-- **`LAB_MODULE`** — which course module (2, 3, or 4 so far)
+- **`LAB_MODULE`** — which course module (2, 3, 4, or 5 so far)
 - **`LAB_LEVEL`** — how many labs *within* that module are unlocked (1–5, cumulative
   — level 3 means "labs 1–3 unlocked", not "only lab 3")
 
 Earlier modules **never disappear** once you move past them — same tenant, doesn't
 reset. Module 3 at any level still has all of Module 2 live; Module 4 still has all
-of Module 2 and 3 live. This is deliberate (see each Overview.md's "Architecture"
-section) — it's why some of Module 4's labs can reuse credentials your team found
-back in Module 3.
+of Module 2 and 3 live; Module 5 still has everything before it live. This is
+deliberate (see each Overview.md's "Architecture" section) — it's why some later
+labs can reuse credentials your team found in an earlier module (e.g. Module 5 Lab 1
+extends Module 4's `iam-sim` registry directly, and several Module 5 flags depend on
+Module 3 Lab 5's jump-host key).
 
 ```bash
 ./labctl start <1-5>              # Module 2 shorthand, e.g. ./labctl start 3
@@ -69,16 +72,23 @@ Examples:
 ./labctl startm 2 1     # Module 2, Lab 1 only
 ./labctl startm 3 4     # Module 2 (full, cumulative) + Module 3 Labs 1-4
 ./labctl startm 4 5     # Module 2 (full) + Module 3 (full) + Module 4, all 5 labs
+./labctl startm 5 5     # Everything: Modules 2-4 (full) + Module 5, all 5 labs
 ```
 
 ## What's running
 
-`docker compose ps` after a full `startm 4 5` should show 13 containers. Almost
+`docker compose ps` after a full `startm 5 5` should show 17 containers. Almost
 everything is reverse-proxied through one nginx gateway (`www`) on port 443 by
 hostname (TLS SNI + `Host` header) — the realistic "one ingress, many backends"
 shape. A handful of things stay on their own dedicated port on purpose (decoys,
 utilities, non-HTTP services) — see each module's `Docker-Ops.md` /
 `Overview.md` for the full breakdown and *why* each one is where it is.
+
+**Module 5 safety note:** `docker-proxy` (Lab 3) is a pure in-memory *simulation* of
+a Docker Engine API subset — it never touches this host's real
+`/var/run/docker.sock`, is never privileged, has no bind mounts, and has no
+published port. If you ever extend this lab, keep it that way; it's a hard
+build requirement, not a nicety (see that lab's InstructorKey).
 
 **Target domain:** everything is served as `*.soulsecure.lab`. Point your attack
 box's DNS at the VM's IP (`sudo bash -c 'echo "nameserver <VM_IP>" > /etc/resolv.conf'`)
