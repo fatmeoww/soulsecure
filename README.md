@@ -5,7 +5,27 @@ fictional engagement against **SoulSecure Inc.** (`soulsecure.lab`). Six modules
 each with several labs; findings and credentials from earlier labs deliberately pay
 off in later ones — work them in order.
 
-## ⚠️ Read this before you try to "run" anything
+## 🚧 Looking for the actual working source code?
+
+**`main` (this branch) is documentation only** — see the note right below. Modules
+3–5 have already been built, verified end-to-end (all flags confirmed, real bugs
+found and fixed), and their actual source (`soulsecure-labs/`, real Dockerfiles +
+`docker-compose.yml` + app code) has been pushed — but it's sitting on a **separate
+branch, `module3-4-build-docs-update`**, not merged into `main` yet (pending final
+review). If you want to actually run Module 3, 4, or 5 today:
+
+```bash
+git clone https://github.com/fatmeoww/soulsecure.git
+cd soulsecure
+git checkout module3-4-build-docs-update
+```
+
+That branch's `README.md` and `soulsecure-labs/README.md` have the real run
+instructions (`labctl startm <module> <level>`). This note will come down once that
+branch is merged — until then, `main` reflects Module 2 (built) plus Modules 3–6 as
+**plans only**, described below.
+
+## ⚠️ Read this before you try to "run" anything (on `main`)
 
 **This repository is documentation, not infrastructure-as-code.** It contains every
 lab's StudentGuide/InstructorKey/build-spec — it does **not** contain the actual
@@ -49,18 +69,20 @@ Every lab folder has the same two core files: **StudentGuide.md** (what you actu
 work through) and **InstructorKey.md** (answers, flags, grading — don't read this
 first if you want to actually try the lab).
 
-## Module status
+## Module status (on `main`)
 
-| Module | Status | Runnable today? |
+| Module | Status on `main` | Runnable from `main` today? |
 |---|---|---|
 | 2 — Reconnaissance & Enumeration | ✅ Built, 5 labs, 20 flags | **Yes** — see below |
-| 3 — Initial Access & Storage Exploitation | 📝 Fully drafted (StudentGuide + InstructorKey + Build-Spec, 5 labs) | No — not yet deployed to any VM |
-| 4 — IAM Exploitation & Privilege Escalation | 📝 Fully drafted | No |
-| 5 — Post-Exploitation, Persistence & Lateral Movement | 📝 Fully drafted | No |
-| 6 — Cloud Pentesting Tools & Hands-on Labs | 📝 Fully drafted | No |
+| 3 — Initial Access & Storage Exploitation | 📝 Fully drafted (StudentGuide + InstructorKey + Build-Spec, 5 labs) | No on `main` — **but already built + verified on `module3-4-build-docs-update`**, see the note above |
+| 4 — IAM Exploitation & Privilege Escalation | 📝 Fully drafted | No on `main` — **built + verified on `module3-4-build-docs-update`** |
+| 5 — Post-Exploitation, Persistence & Lateral Movement | 📝 Fully drafted | No on `main` — **built + verified on `module3-4-build-docs-update`** |
+| 6 — Cloud Pentesting Tools & Hands-on Labs | 📝 Fully drafted | No — not built anywhere yet |
 
-Modules 3–6 are ready to build against once Module 2 finishes internal testing.
-Each one's `Build-Spec.md` is the implementation checklist for whoever stands it up.
+Modules 3–5's specs held up well in practice — the build on the other branch
+followed them closely enough that only one small bug turned up across all three
+(a permission-check action-name mismatch in Module 4 Lab 2, already fixed there).
+Module 6 is genuinely not built anywhere yet.
 
 ---
 
