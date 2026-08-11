@@ -173,3 +173,21 @@ services:
     restart: unless-stopped
     ports:
       - "2121:2121"
+
+  # Module 6 Labs 1-2 -- real-AWS-API-compatible target. Modules 3-5's
+  # hand-rolled Flask mocks are explicitly NOT request-signing/response-shape
+  # compatible with genuine tools (Prowler, Pacu, the real aws CLI) -- see
+  # Lab 1's InstructorKey "Architecture decision". This is a separate,
+  # parallel backend seeded independently by module6/seed_localstack.py; only
+  # meaningful once LAB_MODULE=6 (present but idle/unseeded at earlier
+  # MODULE values, same as every other service in this stack).
+  localstack:
+    image: localstack/localstack:3.0
+    restart: unless-stopped
+    environment:
+      - SERVICES=s3,iam,sts
+      - DEBUG=0
+      - PERSISTENCE=0
+    ports:
+      - "4566:4566"
+    mem_limit: 1g

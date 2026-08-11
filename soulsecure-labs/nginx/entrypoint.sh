@@ -40,6 +40,14 @@ else
     M5_LEVEL=0
 fi
 
+if [ "$LAB_MODULE" -gt 6 ]; then
+    M6_LEVEL=5
+elif [ "$LAB_MODULE" -eq 6 ]; then
+    M6_LEVEL="$LAB_LEVEL"
+else
+    M6_LEVEL=0
+fi
+
 SRC=/opt/nginx-src
 LIVE=/opt/soulsecure-lab
 TLS=$LIVE/tls
@@ -113,6 +121,12 @@ EOF
     fi
 fi
 
+# --- Module 6: static training-material downloads (Labs 3/4) ---
+if [ "$M6_LEVEL" -ge 1 ]; then
+    mkdir -p "$LIVE/module6-downloads"
+    cp -r "$SRC/content/module6-downloads/." "$LIVE/module6-downloads/"
+fi
+
 # ---------------------------------------------------------------------------
 # TLS: one CA-signed server cert for the whole deployment, 100-year validity
 # on both the CA and the server cert -- generated fresh on every container
@@ -133,6 +147,9 @@ if [ "$M4_LEVEL" -ge 1 ]; then
 fi
 if [ "$M5_LEVEL" -ge 2 ]; then
     SAN="$SAN,DNS:bastion.soulsecure.lab"
+fi
+if [ "$M6_LEVEL" -ge 1 ]; then
+    SAN="$SAN,DNS:module6.soulsecure.lab"
 fi
 
 if [ ! -f "$TLS/ca.crt" ] || [ ! -f "$TLS/soulsecure.crt" ]; then
@@ -196,7 +213,11 @@ if [ "$M5_LEVEL" -ge 2 ]; then
     cp "$SRC/conf/lab-m5.conf" /etc/nginx/conf.d/50-module5.conf
 fi
 
-echo "soulsecure-nginx: LAB_MODULE=$LAB_MODULE LAB_LEVEL=$LAB_LEVEL (effective M2 level=$M2_LEVEL, M3 level=$M3_LEVEL, M4 level=$M4_LEVEL, M5 level=$M5_LEVEL)"
+if [ "$M6_LEVEL" -ge 1 ]; then
+    cp "$SRC/conf/lab-m6.conf" /etc/nginx/conf.d/60-module6.conf
+fi
+
+echo "soulsecure-nginx: LAB_MODULE=$LAB_MODULE LAB_LEVEL=$LAB_LEVEL (effective M2 level=$M2_LEVEL, M3 level=$M3_LEVEL, M4 level=$M4_LEVEL, M5 level=$M5_LEVEL, M6 level=$M6_LEVEL)"
 echo "soulsecure-nginx: cert SAN = $SAN"
 nginx -t
 

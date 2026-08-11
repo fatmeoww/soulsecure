@@ -1,0 +1,91 @@
+SoulSecure Inc. -- Module 6, Lab 3: Secret-Scanning & Credential Hunting at Scale
+==================================================================================
+
+This file is a self-verification aid. Real scanning tools (trufflehog, gitleaks)
+will surface the *secret values* below -- they do not know about, and will never
+print, this course's flag{...} strings. Use this file to confirm you found the
+right thing and to collect the matching flag.
+
+--------------------------------------------------------------------------------
+Flag 1 -- site-src-backup/ (git history mining)
+--------------------------------------------------------------------------------
+Target:  site-src-backup.tar.gz -> extract -> site-src-backup/ (a real 3-commit
+         git repo, reused unchanged from Module 3 Lab 4)
+
+Run:
+    trufflehog git file://./site-src-backup --results=verified,unverified,unknown --no-update
+    gitleaks detect --source ./site-src-backup -v
+
+Expected finding: a Stripe-shaped live secret key committed in an early commit
+to payments/config.py, then removed in a later "security: remove hardcoded key"
+commit -- i.e. it's gone from the working tree but still recoverable from git
+history. That is the whole point of scanning history, not just HEAD.
+
+If your tool surfaced that key (value starts with "sk_live_FAKEsoulsecure..."),
+you've confirmed Flag 1:
+
+    flag{99440dacd1c5df1c1cb37b53288f41da}
+
+--------------------------------------------------------------------------------
+Flag 2 -- soulsecure-webapp-dump/config/deploy.conf (base64 decode)
+--------------------------------------------------------------------------------
+Run:
+    gitleaks detect --source ./soulsecure-webapp-dump --no-git -v
+    # then, once you've spotted WEBHOOK_TOKEN_B64:
+    echo 'ZmxhZ3sxMmRmMGQxODgyMmQxZDY3MTdhYTQxYmQwNjQwNzIyMn0=' | base64 -d
+
+Decodes directly to Flag 2 -- no further action needed, this one prints itself:
+
+    flag{12df0d18822d1d6717aa41bd06407222}
+
+--------------------------------------------------------------------------------
+Flag 3 -- soulsecure-webapp-dump/tests/fixtures/aws_example.env (triage)
+--------------------------------------------------------------------------------
+This one is NOT a decode -- it's a judgment call, instructor/submission verified.
+
+    AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE                        <- AWS's own
+    AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY <- public
+                                                                       example
+                                                                       creds.
+                                                                       Real
+                                                                       finding
+                                                                       = NO.
+    DB_PASSWORD=Tr0ub4dor-Staging-2026                             <- real-
+                                                                       looking,
+                                                                       no public
+                                                                       doc status.
+                                                                       Real
+                                                                       finding
+                                                                       = YES.
+
+Submit a short findings note: "AWS key excluded (documented AWS SDK example
+value, not a real credential); DB_PASSWORD reported as a genuine finding."
+Correct triage earns Flag 3:
+
+    flag{32dbc1d785d1d9a11d6a93f77e3f0eca}
+
+--------------------------------------------------------------------------------
+Flag 4 (harder mode) -- combined/deep scan, binary-embedded secret
+--------------------------------------------------------------------------------
+Target:  soulsecure-webapp-dump/assets/logo.png -- a structurally valid PNG with
+         a Stripe-shaped secret (STRIPE_API_KEY=sk_live_...) appended AFTER the
+         IEND chunk (image viewers ignore trailing data; deep/combined scanners
+         don't).
+
+Run:
+    gitleaks detect --source ./soulsecure-webapp-dump --no-git -v
+    # or, to see it directly:
+    tail -c 200 soulsecure-webapp-dump/assets/logo.png
+
+NOTE: gitleaks scans this file's raw bytes regardless of extension and WILL
+surface it. trufflehog's `filesystem` scanner, by contrast, recognizes this
+file as a PNG image by content and skips it entirely by design (0 chunks
+scanned) -- this holds even with --no-force-skip-binaries and even if you
+rename the file's extension, since trufflehog sniffs content, not the name.
+That's a genuine, useful lesson: different scanners make different binary-
+handling trade-offs, and "the tool didn't flag it" is not the same as "there's
+nothing there." Use gitleaks for this one.
+
+Finding it (however you found it) yields Flag 4:
+
+    flag{25ee7fa4ece475253ec07dd7d82e8c2d}

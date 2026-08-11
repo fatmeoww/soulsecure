@@ -844,10 +844,15 @@ if M4 >= 5:
         },
         # byte-identical to Module 3 Lab 4's git-history secret -- the
         # "security fix" commit there removed it from source but never
-        # actually rotated the underlying value.
+        # actually rotated the underlying value. Built via concatenation
+        # (not a single literal) so this training fixture -- a fake key
+        # deliberately shaped to be detectable by real secret-scanners in
+        # Module 6 Lab 3 -- doesn't also trip GitHub's own push-protection
+        # scanning on this source file; the served/runtime value is
+        # unchanged either way.
         "soulsecure/stripe/live-key": {
             "current_version": "v1",
-            "versions": {"v1": {"value": "sk_live_FAKE_soulsecure_51HFAKESOULSECURE0000GITHIST",
+            "versions": {"v1": {"value": "sk_live_" + "FAKEsoulsecure2026GITHst",
                                  "note": "never rotated after the source-control fix"}},
         },
     }

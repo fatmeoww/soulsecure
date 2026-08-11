@@ -32,7 +32,50 @@ Commands:
   logs <service>           Follow logs for one service (dns, www, api, storage,
                            jenkins, vpn, osint, mail)
   rebuild                  Rebuild all images from source (after editing app/nginx/dns files)
+  reset                    Clear all student-created state (iam-sim, jenkins,
+                           storage, vpn, docker-proxy, backup-admin, and --
+                           if MODULE=6 -- localstack) back to canonical seed,
+                           without a full rebuild. Every one of these
+                           services keeps its state in memory only (no
+                           volumes) -- restarting the container IS the reset.
+                           localstack additionally needs seed_localstack.py
+                           re-run after its restart (its state ISN'T baked
+                           into the image the way the Flask apps' seed data
+                           is). Module/level are untouched.
+  module6-seed             Re-run module6/seed_localstack.py against the
+                           current LAB_LEVEL (no-op below MODULE=6). Safe to
+                           re-run any time -- idempotent.
 EOF
+}
+
+# Services whose Python apps hold student-mutable in-memory state (new IAM
+# users/keys/policy versions, Jenkins job backdoors, storage PUT/policy
+# writes, VPN sessions, docker-proxy container/exec records). Restarting
+# them is sufficient to clear it -- none of it lives on a volume.
+STATEFUL_SERVICES="iam-sim jenkins storage vpn docker-proxy backup-admin"
+
+# Module 6 Labs 1-2's LocalStack backend needs an explicit reseed after any
+# restart -- unlike the Flask mocks above, its seed data isn't baked into a
+# container image, it's applied at runtime by module6/seed_localstack.py.
+seed_module6() {
+  local module="$1" level="$2"
+  if [ "$module" != "6" ]; then
+    return 0
+  fi
+  if [ ! -x "$DIR/module6/venv/bin/python3" ]; then
+    echo "labctl: bootstrapping module6/venv (first Module 6 use on this clone)..."
+    python3 -m venv "$DIR/module6/venv"
+    "$DIR/module6/venv/bin/pip" install --quiet boto3
+  fi
+  echo "labctl: waiting for localstack to be healthy..."
+  for _ in $(seq 1 12); do
+    if docker compose ps localstack 2>/dev/null | grep -q healthy; then
+      break
+    fi
+    sleep 5
+  done
+  echo "labctl: seeding LocalStack for Module 6 (level=$level)..."
+  ( cd "$DIR/module6" && ./venv/bin/python3 seed_localstack.py "$level" http://localhost:4566 )
 }
 
 set_level() {
@@ -70,6 +113,7 @@ case "$cmd" in
     level="${3:?labctl: startm requires a level 1-5}"
     set_level "$module" "$level"
     docker compose up -d --build
+    seed_module6 "$module" "$level"
     echo
     echo "== soulsecure-lab running at MODULE=$module LEVEL=$level =="
     docker compose ps
@@ -90,6 +134,7 @@ case "$cmd" in
     docker compose down
     set_level "$module" "$level"
     docker compose up -d --build
+    seed_module6 "$module" "$level"
     docker compose ps
     ;;
   status)
@@ -108,6 +153,28 @@ case "$cmd" in
     ;;
   rebuild)
     docker compose build --no-cache
+    ;;
+  reset)
+    echo "labctl: resetting student-created state on: $STATEFUL_SERVICES"
+    # shellcheck disable=SC2086
+    docker compose restart $STATEFUL_SERVICES
+    if [ -f "$ENV_FILE" ] && grep -q '^LAB_MODULE=6$' "$ENV_FILE"; then
+      docker compose restart localstack
+      level="$(grep '^LAB_LEVEL=' "$ENV_FILE" | cut -d= -f2)"
+      seed_module6 6 "${level:-5}"
+    fi
+    echo
+    echo "== reset complete -- MODULE/LEVEL unchanged =="
+    docker compose ps
+    ;;
+  module6-seed)
+    if [ -f "$ENV_FILE" ]; then
+      module="$(grep '^LAB_MODULE=' "$ENV_FILE" | cut -d= -f2)"
+      level="$(grep '^LAB_LEVEL=' "$ENV_FILE" | cut -d= -f2)"
+    else
+      module=0; level=0
+    fi
+    seed_module6 "${module:-0}" "${level:-0}"
     ;;
   *)
     usage

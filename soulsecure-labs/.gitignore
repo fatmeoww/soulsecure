@@ -14,6 +14,13 @@ nginx/tls/
 # Python
 __pycache__/
 *.pyc
+venv/
+.venv/
+
+# Module 6 -- module6/venv/ is created locally by labctl's seed_module6()
+# helper (python3 -m venv), never committed, always regenerated on first
+# Module 6 use on a fresh clone.
+module6/venv/
 
 # OS cruft
 .DS_Store
