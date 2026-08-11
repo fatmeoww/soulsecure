@@ -53,7 +53,14 @@ POLICIES = {
             "Version": "2012-10-17",
             "Statement": [
                 {"Effect": "Allow", "Action": ["sts:GetCallerIdentity"], "Resource": "*"},
-                {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "arn:aws:s3:::soulsecure-*/*"},
+                # NOTE: single trailing wildcard, not "soulsecure-*/*" -- the
+                # simplified evaluator below (_match_one) only honors a
+                # wildcard as the literal last character, so a second "*"
+                # embedded earlier in the string never matches anything.
+                # This pattern is deliberately broad: it reaches every
+                # soulsecure-prefixed bucket, not just the one or two this
+                # role's owners probably had in mind -- see /iam/s3-read-proof.
+                {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "arn:aws:s3:::soulsecure-*"},
             ],
         }},
     },
@@ -418,6 +425,40 @@ if M4 >= 1:
             resp["flag"] = "flag{d54dd5f6a25d0552109c0a67c86d8664}"
         return jsonify(**resp)
 
+    # Flag 5 -- don't just read the policy JSON, exercise it. Every
+    # whoami-summary note in this lab talks about what a policy *says*;
+    # this route is where a student proves what it *does*. Gated by the
+    # same is_allowed() evaluator every other route uses -- no separate
+    # mock logic, so the result is genuinely a function of each principal's
+    # real attached policy, not a canned "yes" for a hardcoded list of names.
+    @app.route("/iam/s3-read-proof")
+    def iam_s3_read_proof():
+        principal = authenticate()
+        if not principal:
+            return jsonify(error="InvalidClientTokenId"), 403
+        bucket = request.args.get("bucket", "")
+        key = request.args.get("key", "")
+        if not bucket or not key:
+            return jsonify(error="MissingParameter", message="bucket and key query params are required"), 400
+        resource = f"arn:aws:s3:::{bucket}/{key}"
+        if not is_allowed(principal, "s3:GetObject", resource):
+            return jsonify(error="AccessDenied"), 403
+        resp = {
+            "bucket": bucket,
+            "key": key,
+            "content": f"(simulated object body for {bucket}/{key} -- proves the read actually "
+                       "works against this specific resource, not just that the policy JSON looks "
+                       "like it should)",
+        }
+        if bucket != "soulsecure-dev-assets":
+            resp["flag"] = "flag{7be2068adfc0654bf4e296d8a38bb8b3}"
+            resp["note"] = ("This role's s3:GetObject is scoped to \"arn:aws:s3:::soulsecure-*\" -- "
+                             "that wildcard matches ANY bucket with the soulsecure- prefix, not just "
+                             "the one or two buckets its owners probably had in mind. A role written "
+                             "off as \"read-only, no further access\" can still read into buckets it "
+                             "was never meant to reach.")
+        return jsonify(**resp)
+
 # ---------------------------------------------------------------------------
 # Module 5 Lab 1: Persistence via IAM Backdoors
 # ---------------------------------------------------------------------------
@@ -627,6 +668,27 @@ if M4 >= 2:
         if role_name == "soulsecure-finance-role":
             resp["flag"] = "flag{616c068d362294c6963dca42a17a4fba}"
         return jsonify(**resp)
+
+    # Flag 5 -- LegacyReadOnlyAuditPolicy's grant is real iam:ListPolicies,
+    # not just "read these two named policies I pointed you at." A student
+    # who only calls /iam/policy against the specific names this lab's
+    # narrative mentions has used the permission's narrowest possible slice.
+    # This route rewards using it for what it actually grants: the complete
+    # policy inventory of the account, unprompted.
+    @app.route("/iam/list-all-policies")
+    def iam_list_all_policies():
+        principal = authenticate()
+        if not principal:
+            return jsonify(error="InvalidClientTokenId"), 403
+        if not is_allowed(principal, "iam:ListPolicies", "*"):
+            return jsonify(error="AccessDenied"), 403
+        return jsonify(
+            policies=sorted(POLICIES.keys()),
+            flag="flag{890594b6751000b1a954d5389f807d87}",
+            note="iam:ListPolicies with Resource:\"*\" enumerates every policy in the "
+                 "account, not just the ones this lab's walkthrough named -- a broad "
+                 "read grant is itself a full-account recon primitive.",
+        )
 
 # ---------------------------------------------------------------------------
 # Lab 3: Privilege Escalation via IAM Actions
