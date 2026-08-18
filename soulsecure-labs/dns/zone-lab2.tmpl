@@ -1,0 +1,9 @@
+old-www IN A     __ANSWER_IP__
+app     IN CNAME www.soulsecure.lab.
+@       IN TXT   "v=spf1 include:_spf.soulsecure.lab ~all"
+@       IN TXT   "soulsecure-site-verification=b3d9f1c2a7e84e56"
+@       IN MX    10 mail.soulsecure.lab.
+@       IN CAA   0 issue "letsencrypt.org"
+_autodiscover._tcp IN SRV 0 5 443 www.soulsecure.lab.
+; beta.soulsecure.lab has NO DNS record on purpose -- vhost brute force only,
+; and even then it gates on a custom header (see Lab 2 guide).

@@ -1,0 +1,27 @@
+# Generated at runtime by labctl/detect-ip.sh -- never commit, always regenerated
+.env
+lab.override
+
+# Generated at runtime inside the www container's entrypoint.sh (this is the
+# in-repo build context, not the running container's filesystem, but just in
+# case anyone ever runs entrypoint.sh directly on the host for debugging)
+nginx/tls/
+*.crt
+*.key
+*.csr
+*.srl
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Module 6 -- module6/venv/ is created locally by labctl's seed_module6()
+# helper (python3 -m venv), never committed, always regenerated on first
+# Module 6 use on a fresh clone.
+module6/venv/
+
+# OS cruft
+.DS_Store
+Thumbs.db

@@ -1,0 +1,2 @@
+Reminder from ops: encrypted archives use last year's portal password convention.
+Don't ask me why we haven't standardized this. -- J

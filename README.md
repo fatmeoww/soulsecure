@@ -5,35 +5,30 @@ fictional engagement against **SoulSecure Inc.** (`soulsecure.lab`). Six modules
 each with several labs; findings and credentials from earlier labs deliberately pay
 off in later ones — work them in order.
 
-## 🚧 Looking for the actual working source code?
+## ✅ `main` now has real, runnable source code
 
-**`main` (this branch) is documentation only** — see the note right below. Modules
-3–5 have already been built, verified end-to-end (all flags confirmed, real bugs
-found and fixed), and their actual source (`soulsecure-labs/`, real Dockerfiles +
-`docker-compose.yml` + app code) has been pushed — but it's sitting on a **separate
-branch, `module3-4-build-docs-update`**, not merged into `main` yet (pending final
-review). If you want to actually run Module 3, 4, or 5 today:
+As of this update, **`main` includes `soulsecure-labs/`** — the actual Docker
+Compose stack, Dockerfiles, and app source, not just docs. Module 2 and Module 4 are
+officially documented as built-and-verified here; see the status table below for
+what that source actually supports beyond those two (more than the docs currently
+advertise — see the note there).
 
 ```bash
 git clone https://github.com/fatmeoww/soulsecure.git
-cd soulsecure
-git checkout module3-4-build-docs-update
+cd soulsecure/soulsecure-labs
+chmod +x labctl detect-ip.sh
+./labctl startm 4 5      # Module 2 (full) + Module 4, all 5 labs
 ```
 
-That branch's `README.md` and `soulsecure-labs/README.md` have the real run
-instructions (`labctl startm <module> <level>`). This note will come down once that
-branch is merged — until then, `main` reflects Module 2 (built) plus Modules 3–6 as
-**plans only**, described below.
+Full run instructions: [soulsecure-labs/README.md](soulsecure-labs/README.md).
 
-## ⚠️ Read this before you try to "run" anything (on `main`)
+## ⚠️ Read this before you try to "run" anything
 
-**This repository is documentation, not infrastructure-as-code.** It contains every
-lab's StudentGuide/InstructorKey/build-spec — it does **not** contain the actual
-Dockerfiles, `docker-compose.yml`, or application source that make the labs work.
-That source lives on a separate target VM (`/opt/soulsecure-labs/` — see each
-module's `Docker-Ops.md`/`Build-Spec.md`). Cloning this repo alone will not spin
-anything up. What actually gets you a runnable lab is one of the two paths in
-[Module 2](#module-2--reconnaissance--enumeration-built--runnable) below.
+Cloning this repo gets you the source, but not a running lab by itself — you still
+need a Linux VM with Docker to run `soulsecure-labs/` on (your own, or a shared one
+your team already has up). What actually gets you a runnable lab is one of the two
+paths in [Module 2](#module-2--reconnaissance--enumeration-built--runnable) below —
+Module 4 works the same way, just point `labctl` at `startm 4 <level>` instead.
 
 ## Repo structure
 
@@ -74,15 +69,24 @@ first if you want to actually try the lab).
 | Module | Status on `main` | Runnable from `main` today? |
 |---|---|---|
 | 2 — Reconnaissance & Enumeration | ✅ Built, 5 labs, 20 flags | **Yes** — see below |
-| 3 — Initial Access & Storage Exploitation | 📝 Fully drafted (StudentGuide + InstructorKey + Build-Spec, 5 labs) | No on `main` — **but already built + verified on `module3-4-build-docs-update`**, see the note above |
-| 4 — IAM Exploitation & Privilege Escalation | 📝 Fully drafted | No on `main` — **built + verified on `module3-4-build-docs-update`** |
-| 5 — Post-Exploitation, Persistence & Lateral Movement | 📝 Fully drafted | No on `main` — **built + verified on `module3-4-build-docs-update`** |
+| 3 — Initial Access & Storage Exploitation | 📝 Docs only (StudentGuide + InstructorKey + Build-Spec, 5 labs) — **not officially merged yet, though see note** | Not officially — see note |
+| 4 — IAM Exploitation & Privilege Escalation | ✅ Built, verified, merged — 5 labs, 20 flags, includes Thai walkthroughs | **Yes** — `./labctl startm 4 5` |
+| 5 — Post-Exploitation, Persistence & Lateral Movement | 📝 Docs only on `main` — **not officially merged yet, though see note** | Not officially — see note |
 | 6 — Cloud Pentesting Tools & Hands-on Labs | 📝 Fully drafted | No — not built anywhere yet |
 
-Modules 3–5's specs held up well in practice — the build on the other branch
-followed them closely enough that only one small bug turned up across all three
-(a permission-check action-name mismatch in Module 4 Lab 2, already fixed there).
-Module 6 is genuinely not built anywhere yet.
+**Note on Modules 3 and 5:** their actual source (`config-service`, `imds-sim`,
+`bastion`, `docker-proxy`, `backup-admin`, etc.) came along as part of
+`soulsecure-labs/` in this merge, since it's one shared Docker Compose stack with
+Module 4 — so `./labctl startm 5 5` will, in practice, already work. Their course
+docs on `main` haven't been updated to "built and verified" yet on purpose (that's a
+separate merge, deliberately deferred) — treat Module 3/5 as **unofficially present,
+not yet course-endorsed**: the containers exist and were verified on the branch they
+came from, but this repo isn't vouching for their docs/status here yet. Module 4's
+docs and merge were reviewed together and are fully official.
+
+Module 4's spec held up well in practice — only one small bug turned up during
+verification (a permission-check action-name mismatch in Lab 2, already fixed) and
+it was independently re-verified live, multiple times, after this merge.
 
 ---
 
@@ -158,17 +162,35 @@ amd64-only, that's worth reporting back so it gets fixed before wider team rollo
 
 ---
 
-## Modules 3–6 — not deployable yet
+## Module 4 — IAM Exploitation & Privilege Escalation (built, runnable)
 
-These four modules are fully **planned and drafted** — every lab has a complete
-StudentGuide and InstructorKey, and every module has a `Build-Spec.md` with the
-exact containers/routes/credentials someone needs to implement. What's missing is
-the actual build: no Dockerfiles, no app code, no VM. There is currently no command
-that brings any of Module 3–6 up, on this VM or any other.
+Same access model as Module 2 (OVA or shared VM + `labctl`, one-time DNS/CA setup —
+see above). Once you have a `<TARGET_IP>`:
 
-If you want to see what's coming, start with each module's `Overview.md`:
+```bash
+./labctl startm 4 5     # Module 2 (full) + Module 4, all 5 labs
+```
+
+Then work through [Lab1-Credential-Enumeration](Module4-IAM-Exploitation-Privilege-Escalation/Lab1-Credential-Enumeration/StudentGuide.md) →
+[Lab2-Policy-Misconfiguration-Hunting](Module4-IAM-Exploitation-Privilege-Escalation/Lab2-Policy-Misconfiguration-Hunting/StudentGuide.md) →
+[Lab3-Privilege-Escalation-IAM](Module4-IAM-Exploitation-Privilege-Escalation/Lab3-Privilege-Escalation-IAM/StudentGuide.md) →
+[Lab4-Cross-Account-Role-Assumption](Module4-IAM-Exploitation-Privilege-Escalation/Lab4-Cross-Account-Role-Assumption/StudentGuide.md) →
+[Lab5-Secrets-Manager-Exploitation](Module4-IAM-Exploitation-Privilege-Escalation/Lab5-Secrets-Manager-Exploitation/StudentGuide.md).
+Each lab folder also has a `Walkthrough-TH.md`. Module 4 depends on credentials
+harvested in Module 3 (Lab 1 re-derives them inline if you don't have Module 3's own
+docs open) — the environment doesn't reset between modules, so this works even
+though Module 3's docs aren't officially merged yet.
+
+## Modules 3, 5, 6 — docs not merged yet
+
+Module 3 and 5's **source code** already exists in `soulsecure-labs/` (see the note
+in the status table above) — their **docs** on `main` are still the pre-build
+planning versions, not yet reviewed/merged as "built and verified." Module 6 has
+neither docs-merge nor is it built anywhere on `main`'s source yet.
+
+If you want to see what's coming (or preview Module 3/5 ahead of their official
+docs-merge — the containers already work), start with each module's `Overview.md`:
 [Module 3](Module3-Initial-Access-Storage-Exploitation/Overview.md) ·
-[Module 4](Module4-IAM-Exploitation-Privilege-Escalation/Overview.md) ·
 [Module 5](Module5-Post-Exploitation-Persistence-Lateral-Movement/Overview.md) ·
 [Module 6](Module6-Cloud-Pentesting-Tools-Hands-on-Labs/Overview.md).
 
@@ -180,5 +202,6 @@ If you want to see what's coming, start with each module's `Overview.md`:
   convention per lab folder — it's what every cross-reference in this repo expects.
 - Never commit `.ova` files (GitHub's 100MB/file limit; these run 4.5GB+) — already
   excluded via `.gitignore`.
-- When Module 3 (or later) actually gets built, update its `Overview.md` status
-  banner and this README's status table together, same as Module 2 already reflects.
+- When Module 3/5's docs get officially reviewed and merged (source is already
+  here), or Module 6 gets built, update that module's `Overview.md` status banner
+  and this README's status table together, same as Module 2 and 4 already reflect.
