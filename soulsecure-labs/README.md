@@ -1,15 +1,17 @@
 # soulsecure-labs — source code
 
 This is the actual Docker Compose stack behind the SoulSecure Inc. cloud-pentest
-labs (Modules 2–5 so far). Everything here is what's already deployed and verified
-on the shared VM — this folder exists so the team can `git clone` and run their
-**own** independent copy on their **own** VM, instead of everyone sharing one box.
+labs (Modules 2–6, all built and verified). Everything here is what's already
+deployed and verified on the shared VM — this folder exists so the team can
+`git clone` and run their **own** independent copy on their **own** VM, instead of
+everyone sharing one box.
 
 For the story/scenario/flags behind each lab, see the docs one level up
 (`Module2-Reconnaissance-Enumeration/`, `Module3-Initial-Access-Storage-Exploitation/`,
 `Module4-IAM-Exploitation-Privilege-Escalation/`,
-`Module5-Post-Exploitation-Persistence-Lateral-Movement/`). This README is only
-about running the stack itself.
+`Module5-Post-Exploitation-Persistence-Lateral-Movement/`,
+`Module6-Cloud-Pentesting-Tools-Hands-on-Labs/`). This README is only about running
+the stack itself.
 
 ## Prerequisites
 

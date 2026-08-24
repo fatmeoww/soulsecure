@@ -981,5 +981,24 @@ if M5 >= 5:
         result["jenkins_job_configs_reversed"] = True
         return jsonify(**result)
 
+# ---------------------------------------------------------------------------
+# Module 6 Lab 5: Capstone -- completion acknowledgment
+# ---------------------------------------------------------------------------
+if M4 >= 3:
+    @app.route("/capstone/submit-report", methods=["POST"])
+    def capstone_submit_report():
+        principal = authenticate()
+        if not principal or not is_effectively_admin(principal):
+            return jsonify(error="AccessDenied: submit only once you actually hold "
+                                  "admin-equivalent access"), 403
+        body = request.get_json(silent=True) or {}
+        stages = body.get("stages_completed", {})
+        required = ["initial_access", "privesc", "persistence", "lateral_movement", "impact"]
+        missing = [s for s in required if not stages.get(s)]
+        if missing:
+            return jsonify(error="incomplete", missing_stages=missing), 400
+        return jsonify(status="capstone acknowledged",
+                        flag="flag{436297b00829b4b4c7df7a325adede2e}")
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8600)
