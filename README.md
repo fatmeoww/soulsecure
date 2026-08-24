@@ -69,11 +69,11 @@ OVA-Exports/README.md          # import instructions (the .ova files themselves
                                  are NOT in this repo -- see below)
 ```
 
-**Docs status per module — only Module 2 has its own `Docker-Ops.md` written so
-far** (Modules 3–6 are built and their `labctl startm <module> <level>` commands
-work identically — see [soulsecure-labs/README.md](soulsecure-labs/README.md) for
-the module-agnostic version of that doc — but each module's own dedicated
-`Docker-Ops.md` is still on the to-write list).
+Every module now has its own `Docker-Ops.md` (Module 3–6's were written
+2026-08-24, cross-referencing Module 2's for the shared TLS/host-setup basics
+rather than repeating them) — see each module's folder, or
+[soulsecure-labs/README.md](soulsecure-labs/README.md) for the module-agnostic
+quickstart version.
 
 Every lab folder has the same two core files: **StudentGuide.md** (what you actually
 work through) and **InstructorKey.md** (answers, flags, grading — don't read this
@@ -193,14 +193,16 @@ consolidated flag index: [Module 3](Module3-Initial-Access-Storage-Exploitation/
 
 **Still open / not yet done, tracked honestly rather than swept under the status
 table above:**
-- `Module3-Docker-Ops.md`, `Module4-Docker-Ops.md`, `Module5-Docker-Ops.md`,
-  `Module6-Docker-Ops.md` — none written yet; only Module 2 has its own (the
-  `labctl` commands work identically for every module in the meantime, see
-  [soulsecure-labs/README.md](soulsecure-labs/README.md))
+- Student testing from an actual Kali box — every verification pass so far has
+  been from the build/test environment, not a real student attack box
+- `Module3-Flags-สรุปทั้งหมด.md`, `Module4-Flags-สรุปทั้งหมด.md`,
+  `Module5-Flags-สรุปทั้งหมด.md` — master Thai answer-key docs; only Module 2 has
+  one so far (the per-lab `Walkthrough-TH.md` files exist for every module, this
+  is specifically the single-page summary)
 - A dedicated "plant a full Module 5 attack chain's worth of state, `labctl reset`,
   verify every individual artifact is gone" pass — the reset mechanism itself is
-  verified sound (see Module 6's Build-Spec), but this specific stronger test
-  hasn't been run yet
+  verified sound (see Module 5's [Docker-Ops.md](Module5-Post-Exploitation-Persistence-Lateral-Movement/Docker-Ops.md)),
+  but this specific stronger test hasn't been run yet
 
 ---
 
