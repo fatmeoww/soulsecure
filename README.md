@@ -197,8 +197,6 @@ table above:**
   `Module6-Docker-Ops.md` — none written yet; only Module 2 has its own (the
   `labctl` commands work identically for every module in the meantime, see
   [soulsecure-labs/README.md](soulsecure-labs/README.md))
-- `Module6-Lab5-Report-Template.md` — a starter document for the capstone report
-  deliverable, referenced by that lab's StudentGuide but not yet built
 - A dedicated "plant a full Module 5 attack chain's worth of state, `labctl reset`,
   verify every individual artifact is gone" pass — the reset mechanism itself is
   verified sound (see Module 6's Build-Spec), but this specific stronger test
