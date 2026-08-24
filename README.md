@@ -5,15 +5,36 @@ fictional engagement against **SoulSecure Inc.** (`soulsecure.lab`). Six modules
 each with several labs; findings and credentials from earlier labs deliberately pay
 off in later ones — work them in order.
 
+## ✅ This repo has real, runnable source code
+
+**This branch includes `soulsecure-labs/`** — the actual Docker Compose stack,
+Dockerfiles, and app source for **all six modules**, not just docs. Modules 2–6 are
+all built and verified on the shared VM.
+
+```bash
+git clone https://github.com/fatmeoww/soulsecure.git
+cd soulsecure/soulsecure-labs
+chmod +x labctl detect-ip.sh
+./labctl startm 6 5      # everything: Modules 2-5 (full) + Module 6, all 5 labs
+```
+
+Full run instructions: [soulsecure-labs/README.md](soulsecure-labs/README.md).
+
 ## ⚠️ Read this before you try to "run" anything
 
-**This repository is documentation, not infrastructure-as-code.** It contains every
-lab's StudentGuide/InstructorKey/build-spec — it does **not** contain the actual
-Dockerfiles, `docker-compose.yml`, or application source that make the labs work.
-That source lives on a separate target VM (`/opt/soulsecure-labs/` — see each
-module's `Docker-Ops.md`/`Build-Spec.md`). Cloning this repo alone will not spin
-anything up. What actually gets you a runnable lab is one of the two paths in
-[Module 2](#module-2--reconnaissance--enumeration-built--runnable) below.
+Cloning this repo gets you the source, but not a running lab by itself — you still
+need a Linux VM with Docker to run `soulsecure-labs/` on (your own, or a shared one
+your team already has up, or one of the standalone [OVA-Exports/](OVA-Exports/)
+appliances). What actually gets you a runnable lab is one of the two paths in
+[Module 2](#module-2--reconnaissance--enumeration-built--runnable) below — every
+later module works the same way, just point `labctl` at `startm <module> <level>`
+instead.
+
+> **Note on `main` vs. this branch:** as of this writing, `main` only has Module 2
+> and Module 4 officially merged (see its own README) — Modules 3, 5, and 6 (and the
+> Module 6 Lab 5 completion flag) exist here on `module3-4-build-docs-update` and
+> haven't been merged yet. If you're reading this on `main`, the status table below
+> won't match; check which branch you're actually on.
 
 ## Repo structure
 
@@ -34,16 +55,25 @@ Module2-Reconnaissance-Enumeration/
 
 Module3-Initial-Access-Storage-Exploitation/
 ├── Overview.md
-├── Build-Spec.md              # implementation checklist (not yet built)
+├── Build-Spec.md              # implementation checklist, ground truth per lab's InstructorKey
 └── Lab1-Object-Storage-Exploitation/ ... Lab5-VPN-Gateway-Exploitation/
 
 Module4-IAM-Exploitation-Privilege-Escalation/     (same pattern)
 Module5-Post-Exploitation-Persistence-Lateral-Movement/  (same pattern)
 Module6-Cloud-Pentesting-Tools-Hands-on-Labs/      (same pattern)
 
+soulsecure-labs/                # the actual source: Dockerfiles, docker-compose.yml,
+                                 # app code -- see soulsecure-labs/README.md to run it
+
 OVA-Exports/README.md          # import instructions (the .ova files themselves
                                  are NOT in this repo -- see below)
 ```
+
+**Docs status per module — only Module 2 has its own `Docker-Ops.md` written so
+far** (Modules 3–6 are built and their `labctl startm <module> <level>` commands
+work identically — see [soulsecure-labs/README.md](soulsecure-labs/README.md) for
+the module-agnostic version of that doc — but each module's own dedicated
+`Docker-Ops.md` is still on the to-write list).
 
 Every lab folder has the same two core files: **StudentGuide.md** (what you actually
 work through) and **InstructorKey.md** (answers, flags, grading — don't read this
@@ -53,14 +83,17 @@ first if you want to actually try the lab).
 
 | Module | Status | Runnable today? |
 |---|---|---|
-| 2 — Reconnaissance & Enumeration | ✅ Built, 5 labs, 20 flags | **Yes** — see below |
-| 3 — Initial Access & Storage Exploitation | 📝 Fully drafted (StudentGuide + InstructorKey + Build-Spec, 5 labs) | No — not yet deployed to any VM |
-| 4 — IAM Exploitation & Privilege Escalation | 📝 Fully drafted | No |
-| 5 — Post-Exploitation, Persistence & Lateral Movement | 📝 Fully drafted | No |
-| 6 — Cloud Pentesting Tools & Hands-on Labs | 📝 Fully drafted | No |
+| 2 — Reconnaissance & Enumeration | ✅ Built & verified, 5 labs, 20 flags | **Yes** — see below, and merged to `main` |
+| 3 — Initial Access & Storage Exploitation | ✅ Built & verified, 5 labs, 20 flags | **Yes**, `startm 3 <level>` — on this branch only |
+| 4 — IAM Exploitation & Privilege Escalation | ✅ Built & verified, 5 labs, 20 flags | **Yes**, `startm 4 <level>` — merged to `main` |
+| 5 — Post-Exploitation, Persistence & Lateral Movement | ✅ Built & verified, 5 labs, 20 flags | **Yes**, `startm 5 <level>` — on this branch only |
+| 6 — Cloud Pentesting Tools & Hands-on Labs | ✅ Built & verified, 5 labs, 17 flags + 1 rubric-graded report | **Yes**, `startm 6 <level>` — on this branch only |
 
-Modules 3–6 are ready to build against once Module 2 finishes internal testing.
-Each one's `Build-Spec.md` is the implementation checklist for whoever stands it up.
+All six modules are built, source-complete, and live-verified end to end on the
+shared VM, with a standalone per-lab OVA appliance exported for every one of the 25
+labs (see [OVA-Exports/README.md](OVA-Exports/README.md)). "On this branch only"
+above means the docs+source exist here on `module3-4-build-docs-update` but haven't
+been merged into `main` yet — see the branch note above.
 
 ---
 
@@ -136,19 +169,40 @@ amd64-only, that's worth reporting back so it gets fixed before wider team rollo
 
 ---
 
-## Modules 3–6 — not deployable yet
+## Modules 3–6 — built and runnable (on this branch)
 
-These four modules are fully **planned and drafted** — every lab has a complete
-StudentGuide and InstructorKey, and every module has a `Build-Spec.md` with the
-exact containers/routes/credentials someone needs to implement. What's missing is
-the actual build: no Dockerfiles, no app code, no VM. There is currently no command
-that brings any of Module 3–6 up, on this VM or any other.
+All four are fully built and live-verified against the shared VM, the same way
+Module 2 and 4 are — same `soulsecure-labs/` stack, same `labctl startm <module>
+<level>` pattern, same StudentGuide → InstructorKey → (Thai walkthrough) structure
+per lab. Module 6 is architecturally different from the rest (three infrastructure
+patterns — LocalStack, static files, and a full-stack capstone reset — instead of
+one uniform mock pattern); see its own `Overview.md`/`Build-Spec.md` for why.
 
-If you want to see what's coming, start with each module's `Overview.md`:
-[Module 3](Module3-Initial-Access-Storage-Exploitation/Overview.md) ·
+Run any of them exactly like Module 2, just swap the module number:
+```bash
+./labctl startm 3 5      # Module 2 (full) + Module 3, all 5 labs
+./labctl startm 4 5      # + Module 4, all 5 labs
+./labctl startm 5 5      # + Module 5, all 5 labs
+./labctl startm 6 5      # + Module 6, all 5 labs (Lab 5 = capstone, needs `labctl reset` first for a clean run)
+```
+See each module's `Overview.md` for the story/scenario and `Build-Spec.md` for the
+consolidated flag index: [Module 3](Module3-Initial-Access-Storage-Exploitation/Overview.md) ·
 [Module 4](Module4-IAM-Exploitation-Privilege-Escalation/Overview.md) ·
 [Module 5](Module5-Post-Exploitation-Persistence-Lateral-Movement/Overview.md) ·
 [Module 6](Module6-Cloud-Pentesting-Tools-Hands-on-Labs/Overview.md).
+
+**Still open / not yet done, tracked honestly rather than swept under the status
+table above:**
+- `Module3-Docker-Ops.md`, `Module4-Docker-Ops.md`, `Module5-Docker-Ops.md`,
+  `Module6-Docker-Ops.md` — none written yet; only Module 2 has its own (the
+  `labctl` commands work identically for every module in the meantime, see
+  [soulsecure-labs/README.md](soulsecure-labs/README.md))
+- `Module6-Lab5-Report-Template.md` — a starter document for the capstone report
+  deliverable, referenced by that lab's StudentGuide but not yet built
+- A dedicated "plant a full Module 5 attack chain's worth of state, `labctl reset`,
+  verify every individual artifact is gone" pass — the reset mechanism itself is
+  verified sound (see Module 6's Build-Spec), but this specific stronger test
+  hasn't been run yet
 
 ---
 
@@ -158,5 +212,6 @@ If you want to see what's coming, start with each module's `Overview.md`:
   convention per lab folder — it's what every cross-reference in this repo expects.
 - Never commit `.ova` files (GitHub's 100MB/file limit; these run 4.5GB+) — already
   excluded via `.gitignore`.
-- When Module 3 (or later) actually gets built, update its `Overview.md` status
-  banner and this README's status table together, same as Module 2 already reflects.
+- When a module's status changes (built, merged to `main`, etc.), update its
+  `Overview.md`/`Build-Spec.md` status banner and this README's status table
+  together — don't let one drift from the other, it already happened once.
